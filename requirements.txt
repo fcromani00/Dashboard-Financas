@@ -1,0 +1,10 @@
+streamlit
+st-gsheets-connection
+requests
+python-dotenv
+langchain
+langchain-google-genai
+langchain-community
+faiss-cpu
+google-generativeai
+PyPDF2
