@@ -512,71 +512,104 @@ with tab_lancar:
     col_l1, col_l2 = st.columns(2)
 
     with col_l1:
-        st.subheader("📄 Importar Nota de Corretagem (Inter US PDF)")
-        pdf_nota = st.file_uploader("Selecione o PDF de confirmação da Inter US", type=["pdf"])
-        if pdf_nota is not None:
-            df_nota = tratar_nota_corretagem_us_inter(pdf_nota)
-            st.dataframe(
-                df_nota[["Trade Date", "Symbol", "Security", "Action", "Price", "Quantity"]],
-                hide_index=True,
-                use_container_width=True,
-            )
-            if st.button("💾 Gravar operações da nota na V2", type="primary"):
-                repo = obter_repo()
-                ativos_conhecidos = set(df_ativos["ticker"].str.upper().tolist())
-                novos_ativos = []
-                novas_ops = []
+        st.subheader("📄 Importar Notas de Corretagem (Inter US PDF)")
+        st.caption("Arraste um ou vários PDFs de confirmação (Trade Confirmation) da Inter US de uma vez.")
+        pdfs_notas = st.file_uploader(
+            "Selecione os PDFs de confirmação da Inter US",
+            type=["pdf"],
+            accept_multiple_files=True,
+        )
+        if pdfs_notas:
+            dfs_extraidos = []
+            for pdf_arq in pdfs_notas:
+                df_n = tratar_nota_corretagem_us_inter(pdf_arq)
+                if not df_n.empty:
+                    df_n["Arquivo"] = pdf_arq.name
+                    dfs_extraidos.append(df_n)
 
-                for _, r in df_nota.iterrows():
-                    sym = str(r["Symbol"]).strip().upper()
-                    at_id = id_deterministico("ativo", sym)
-                    if sym not in ativos_conhecidos:
-                        novos_ativos.append(
+            if not dfs_extraidos:
+                st.warning("Nenhuma operação reconhecida nos PDFs enviados.")
+            else:
+                df_nota = pd.concat(dfs_extraidos, ignore_index=True)
+                st.dataframe(
+                    df_nota[["Trade Date", "Symbol", "Security", "Action", "Price", "Quantity", "Arquivo"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                if st.button(f"💾 Gravar {len(df_nota)} operações na planilha V2", type="primary", use_container_width=True):
+                    repo = obter_repo()
+                    ativos_conhecidos = set(df_ativos["ticker"].str.upper().tolist())
+                    # Assinaturas já existentes para evitar duplicar se subir o mesmo PDF duas vezes
+                    chaves_existentes = set()
+                    if not df_ops.empty:
+                        for _, op_ex in df_ops.iterrows():
+                            d_ex = parse_data(op_ex.get("data"))
+                            q_ex = round(abs(parse_numero(op_ex.get("quantidade")) or 0.0), 6)
+                            p_ex = round(abs(parse_numero(op_ex.get("preco")) or 0.0), 4)
+                            chaves_existentes.add((str(d_ex), str(op_ex.get("ativo_id")), str(op_ex.get("tipo")), q_ex, p_ex))
+
+                    novos_ativos = []
+                    novas_ops = []
+                    ignoradas_dup = 0
+
+                    for _, r in df_nota.iterrows():
+                        sym = str(r["Symbol"]).strip().upper()
+                        at_id = id_deterministico("ativo", sym)
+                        if sym not in ativos_conhecidos:
+                            novos_ativos.append(
+                                {
+                                    "id": at_id,
+                                    "ticker": sym,
+                                    "nome": str(r.get("Security", sym)).strip(),
+                                    "classe": "acao_us",
+                                    "moeda": "USD",
+                                    "conta": "Inter US",
+                                    "fonte_cotacao": "yfinance",
+                                    "codigo_cotacao": sym.replace(".", "-"),
+                                    "ativo": "S",
+                                }
+                            )
+                            ativos_conhecidos.add(sym)
+
+                        d_op = parse_data(r["Trade Date"]) or date.today()
+                        preco = abs(parse_numero(r["Price"]) or 0.0)
+                        qtd = abs(parse_numero(r["Quantity"]) or 0.0)
+                        acao = str(r.get("Action", "Buy")).lower()
+                        tipo_op = "venda" if "sell" in acao else "compra"
+
+                        assinatura = (str(d_op), at_id, tipo_op, round(qtd, 6), round(preco, 4))
+                        if assinatura in chaves_existentes:
+                            ignoradas_dup += 1
+                            continue
+                        chaves_existentes.add(assinatura)
+
+                        novas_ops.append(
                             {
-                                "id": at_id,
-                                "ticker": sym,
-                                "nome": str(r.get("Security", sym)).strip(),
-                                "classe": "acao_us",
-                                "moeda": "USD",
+                                "id": novo_id(),
+                                "data": d_op,
+                                "ativo_id": at_id,
                                 "conta": "Inter US",
-                                "fonte_cotacao": "yfinance",
-                                "codigo_cotacao": sym.replace(".", "-"),
-                                "ativo": "S",
+                                "tipo": tipo_op,
+                                "quantidade": round(qtd, 8),
+                                "preco": round(preco, 6),
+                                "taxas": 0.0,
+                                "valor_total": round(qtd * preco, 2),
+                                "moeda": "USD",
+                                "importacao_id": str(r.get("Arquivo", "")),
+                                "observacao": "Nota Inter US",
+                                "criado_em": agora_iso(),
                             }
                         )
-                        ativos_conhecidos.add(sym)
 
-                    d_op = parse_data(r["Trade Date"]) or date.today()
-                    preco = abs(parse_numero(r["Price"]) or 0.0)
-                    qtd = abs(parse_numero(r["Quantity"]) or 0.0)
-                    acao = str(r.get("Action", "Buy")).lower()
-                    tipo_op = "venda" if "sell" in acao else "compra"
-
-                    novas_ops.append(
-                        {
-                            "id": novo_id(),
-                            "data": d_op,
-                            "ativo_id": at_id,
-                            "conta": "Inter US",
-                            "tipo": tipo_op,
-                            "quantidade": round(qtd, 8),
-                            "preco": round(preco, 6),
-                            "taxas": 0.0,
-                            "valor_total": round(qtd * preco, 2),
-                            "moeda": "USD",
-                            "importacao_id": pdf_nota.name,
-                            "observacao": "Nota Inter US",
-                            "criado_em": agora_iso(),
-                        }
+                    if novos_ativos:
+                        repo.append("ativos", novos_ativos)
+                    if novas_ops:
+                        repo.append("operacoes", novas_ops)
+                    invalidar_abas("ativos", "operacoes")
+                    st.success(
+                        f"✅ {len(novas_ops)} nova(s) operação(ões) gravada(s) ({ignoradas_dup} duplicata(s) ignorada(s))!"
                     )
-
-                if novos_ativos:
-                    repo.append("ativos", novos_ativos)
-                if novas_ops:
-                    repo.append("operacoes", novas_ops)
-                invalidar_abas("ativos", "operacoes")
-                st.success(f"✅ {len(novas_ops)} operação(ões) importada(s) com sucesso!")
-                st.rerun()
+                    st.rerun()
 
     with col_l2:
         st.subheader("✍️ Lançamento Manual (EUA, B3, Dividendos)")
