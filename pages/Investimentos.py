@@ -371,13 +371,13 @@ with tab_us:
     with cy1:
         modo_yf = st.radio(
             "Formato de exportação",
-            options=["abertas", "historico"],
-            format_func=lambda x: (
-                "Posições abertas atuais (Recomendado — 0 erros no Yahoo)"
-                if x == "abertas"
-                else "Histórico completo de ordens (compras +, vendas -)"
-            ),
-            horizontal=True,
+            options=["lotes_fifo", "abertas", "historico"],
+            format_func=lambda x: {
+                "lotes_fifo": "Lotes históricos em carteira (FIFO — datas reais, 0 erros no Yahoo)",
+                "abertas": "Consolidado por ativo (1 linha/ativo, preço médio)",
+                "historico": "Todas as ordens brutas (inclui vendas negativas — gera avisos no Yahoo)",
+            }[x],
+            horizontal=False,
             key="yf_export_modo",
         )
     with cy2:
@@ -385,7 +385,7 @@ with tab_us:
     df_yf_exp, csv_yf_bytes = exportar_yahoo_financas(
         df_ativos,
         df_ops,
-        apenas_abertas=(modo_yf == "abertas"),
+        modo=modo_yf,
         incluir_cripto=incluir_cripto_yf,
         usd_brl=usd_brl,
     )

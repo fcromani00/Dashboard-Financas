@@ -262,6 +262,14 @@ class TestPortfolioV2(unittest.TestCase):
         self.assertEqual(df_hist.iloc[1]["Quantity"], -0.5)
         self.assertIn(b"Symbol,Trade Date,Purchase Price,Quantity", csv_hist)
 
+        # Lotes FIFO: consome 0.5 da compra de 2.0, sobra 1.5 com data/preço originais (2026-11-10, 500.0)
+        df_fifo, _ = exportar_yahoo_financas(df_a, df_o, modo="lotes_fifo")
+        self.assertEqual(len(df_fifo), 1)
+        self.assertEqual(df_fifo.iloc[0]["Symbol"], "BRK-B")
+        self.assertEqual(df_fifo.iloc[0]["Trade Date"], "2026-11-10")
+        self.assertEqual(df_fifo.iloc[0]["Quantity"], 1.5)
+        self.assertEqual(df_fifo.iloc[0]["Purchase Price"], 500.0)
+
         # Posições abertas com Cripto: BRK-B + BTC-USD convertido para USD
         df_ab, _ = exportar_yahoo_financas(
             df_a, df_o, apenas_abertas=True, incluir_cripto=True, usd_brl=5.0, data_ref=date(2026, 11, 22)

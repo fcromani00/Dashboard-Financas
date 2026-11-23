@@ -484,18 +484,29 @@ def calcular_ir_iof_renda_fixa(
     }
 
 
+TICKERS_INDISPONIVEIS_YAHOO = {"BLD", "KVUE"}
+
+
 def exportar_yahoo_financas(
     df_ativos: pd.DataFrame,
     df_operacoes: pd.DataFrame,
-    apenas_abertas: bool = True,
+    modo: str = "lotes_fifo",
     incluir_cripto: bool = False,
     usd_brl: float = 5.80,
     data_ref: date | None = None,
+    apenas_abertas: bool | None = None,
 ) -> tuple[pd.DataFrame, bytes]:
-    """Gera DataFrame e CSV no formato oficial de importação do Yahoo Finance:
-    Colunas: `Symbol, Trade Date, Purchase Price, Quantity`.
-    Converte criptos `-BRL` para `-USD` (padrão aceito pelo Yahoo Finance Portfolio).
+    """Gera DataFrame e CSV no formato oficial do Yahoo Finance (`Symbol, Trade Date, Purchase Price, Quantity`).
+
+    Modos:
+    - `lotes_fifo` (padrão): mantém as datas e preços históricos reais de cada compra ainda em carteira (FIFO),
+      com `Quantity > 0` e sem tickers deslistados — 0 erros e 0 avisos no importador do Yahoo Finance.
+    - `abertas`: 1 linha consolidada por posição aberta com preço médio e data de referência.
+    - `historico`: todas as ordens (compras `+` e vendas `-`), filtrando tickers não reconhecidos pelo Yahoo.
     """
+    if apenas_abertas is not None:
+        modo = "abertas" if apenas_abertas else "historico"
+
     cols = ["Symbol", "Trade Date", "Purchase Price", "Quantity"]
     if df_ativos is None or df_ativos.empty:
         vazio_df = pd.DataFrame(columns=cols)
@@ -520,6 +531,8 @@ def exportar_yahoo_financas(
     for _, a in ativos_yf.iterrows():
         cod = str(a.get("codigo_cotacao") or "").strip()
         sym = cod if cod else str(a.get("ticker", "")).strip().replace(".", "-")
+        if sym.upper() in TICKERS_INDISPONIVEIS_YAHOO:
+            continue
         fator_preco = 1.0
         if sym.endswith("-BRL") and str(a.get("classe", "")) == "cripto":
             sym = sym[:-4] + "-USD"
@@ -528,7 +541,7 @@ def exportar_yahoo_financas(
             mapa_sym[str(a["id"])] = (sym, fator_preco)
 
     linhas: list[dict[str, Any]] = []
-    if apenas_abertas:
+    if modo == "abertas":
         pos = calcular_posicoes(ativos_yf, df_operacoes)
         dt_str = (data_ref or date.today()).strftime("%Y-%m-%d")
         abertas = pos[pos["quantidade"] > 1e-6].sort_values("custo_total", ascending=False)
@@ -545,6 +558,55 @@ def exportar_yahoo_financas(
                     "Quantity": round(float(r["quantidade"]), 8),
                 }
             )
+    elif modo == "lotes_fifo":
+        if df_operacoes is not None and not df_operacoes.empty:
+            ops = df_operacoes.copy()
+            ops["data_dt"] = ops["data"].apply(parse_data)
+            ops = ops.sort_values(["data_dt", "criado_em"], ascending=[True, True])
+            lotes_por_ativo: dict[str, list[dict[str, Any]]] = {}
+            for _, op in ops.iterrows():
+                aid = str(op.get("ativo_id", ""))
+                info = mapa_sym.get(aid)
+                if not info:
+                    continue
+                sym, fator_preco = info
+                tipo = str(op.get("tipo", "")).lower()
+                q = abs(parse_numero(op.get("quantidade")) or 0.0)
+                p = parse_numero(op.get("preco")) or 0.0
+                dt_op = op.get("data_dt")
+                if q <= 1e-8 or not dt_op:
+                    continue
+                if tipo in ("compra", "aporte"):
+                    lotes_por_ativo.setdefault(aid, []).append(
+                        {
+                            "Symbol": sym,
+                            "Trade Date": dt_op.strftime("%Y-%m-%d"),
+                            "Purchase Price": round(float(p) * fator_preco, 4),
+                            "Quantity": q,
+                        }
+                    )
+                elif tipo in ("venda", "resgate"):
+                    restante = q
+                    fila = lotes_por_ativo.get(aid, [])
+                    while restante > 1e-8 and fila:
+                        if fila[0]["Quantity"] <= restante + 1e-8:
+                            restante -= fila[0]["Quantity"]
+                            fila.pop(0)
+                        else:
+                            fila[0]["Quantity"] -= restante
+                            restante = 0.0
+            for fila in lotes_por_ativo.values():
+                for lote in fila:
+                    if lote["Quantity"] > 1e-6:
+                        linhas.append(
+                            {
+                                "Symbol": lote["Symbol"],
+                                "Trade Date": lote["Trade Date"],
+                                "Purchase Price": lote["Purchase Price"],
+                                "Quantity": round(float(lote["Quantity"]), 8),
+                            }
+                        )
+            linhas.sort(key=lambda x: (x["Trade Date"], x["Symbol"]))
     else:
         if df_operacoes is not None and not df_operacoes.empty:
             ops = df_operacoes.copy()
