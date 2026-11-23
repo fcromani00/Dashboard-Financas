@@ -484,6 +484,39 @@ def calcular_ir_iof_renda_fixa(
     }
 
 
+def buscar_selic_atual(fallback: float = 13.75) -> tuple[float, float, str]:
+    """Busca a Meta Selic (% a.a.) oficial no Banco Central (SGS série 432).
+    Retorna `(selic_aa, cdi_estimado_aa, data_referencia)`.
+    """
+    import requests
+
+    url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        dados = resp.json()
+        if isinstance(dados, list) and dados:
+            selic = float(str(dados[0]["valor"]).replace(",", "."))
+            cdi = round(max(0.0, selic - 0.10), 2)
+            return round(selic, 2), cdi, str(dados[0].get("data", ""))
+    except Exception:
+        pass
+    fb = round(float(fallback), 2)
+    return fb, round(max(0.0, fb - 0.10), 2), ""
+
+
+def projetar_rendimento_rf(saldo: float, taxa_cdi_pct: float, cdi_aa: float) -> dict[str, float]:
+    """Calcula taxa efetiva anual e projeção de rendimento bruto mensal/anual para um CDB % do CDI."""
+    s = max(0.0, float(saldo or 0.0))
+    taxa_aa = max(0.0, float(cdi_aa or 0.0)) * (max(0.0, float(taxa_cdi_pct or 100.0)) / 100.0)
+    fator_mensal = ((1.0 + taxa_aa / 100.0) ** (1.0 / 12.0)) - 1.0
+    return {
+        "taxa_efetiva_aa": round(taxa_aa, 2),
+        "rendimento_mensal_bruto": round(s * fator_mensal, 2),
+        "rendimento_anual_bruto": round(s * (taxa_aa / 100.0), 2),
+    }
+
+
 TICKERS_INDISPONIVEIS_YAHOO = {"BLD", "KVUE"}
 
 

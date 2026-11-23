@@ -342,6 +342,24 @@ class TestPortfolioV2(unittest.TestCase):
         self.assertEqual(carregar_memoria_lista(cfg_mem), ["Foco em ETFs VOO e QQQM"])
         self.assertIn("Foco em ETFs VOO e QQQM", formatar_system_prompt(cfg_mem))
 
+    def test_selic_e_projecao_rf(self):
+        from unittest.mock import MagicMock, patch
+        from core.portfolio import buscar_selic_atual, projetar_rendimento_rf
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"data": "09/12/2026", "valor": "13.75"}]
+        mock_resp.raise_for_status.return_value = None
+
+        with patch("requests.get", return_value=mock_resp):
+            selic, cdi, dt = buscar_selic_atual()
+        self.assertEqual(selic, 13.75)
+        self.assertEqual(cdi, 13.65)
+        self.assertEqual(dt, "09/12/2026")
+
+        proj = projetar_rendimento_rf(10000.0, 120.0, 13.65)
+        self.assertEqual(proj["taxa_efetiva_aa"], 16.38)
+        self.assertGreater(proj["rendimento_mensal_bruto"], 120.0)
+
 
 if __name__ == "__main__":
     unittest.main()

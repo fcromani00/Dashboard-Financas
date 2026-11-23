@@ -14,7 +14,7 @@ import pandas as pd
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
-from core.portfolio import calcular_ir_iof_renda_fixa, consolidar_carteira
+from core.portfolio import buscar_selic_atual, calcular_ir_iof_renda_fixa, consolidar_carteira
 from core.recurring import analisar_parcelas, detectar_recorrencias
 from core.utils import parse_data, parse_numero
 
@@ -89,11 +89,12 @@ def criar_ferramentas_consultor(
             for _, r in df_rf.iterrows():
                 mapa_rf[str(r["ativo_id"])] = r
 
+        selic_aa, cdi_aa, _ = buscar_selic_atual()
         linhas = [
             f"Resumo Geral: Patrimônio R$ {resumo['patrimonio_brl']:,.2f} | Custo R$ {resumo['custo_brl']:,.2f} | "
             f"P&L Aberto R$ {resumo['pl_aberto_brl']:,.2f} ({resumo['pl_aberto_pct']:.2f}%) | "
             f"Realizado+Proventos US$/R$ {resumo['pl_realizado_total'] + resumo['proventos_total']:,.2f} | "
-            f"USD/BRL {resumo['usd_brl']:.4f}"
+            f"USD/BRL {resumo['usd_brl']:.4f} | Selic {selic_aa:.2f}% a.a. (CDI {cdi_aa:.2f}%)"
         ]
         for _, r in df_cart.iterrows():
             if r["classe"] == "renda_fixa":

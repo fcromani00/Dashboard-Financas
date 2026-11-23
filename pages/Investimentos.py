@@ -15,11 +15,13 @@ import streamlit as st
 
 from core.portfolio import (
     buscar_cotacoes_atuais,
+    buscar_selic_atual,
     calcular_evolucao_aportes_mensal,
     calcular_ir_iof_renda_fixa,
     calcular_rebalanceamento,
     consolidar_carteira,
     exportar_yahoo_financas,
+    projetar_rendimento_rf,
 )
 from core.state import invalidar_abas, ler_aba, mapa_config, obter_repo, salvar_config
 from core.theme import badge_instituicao_html, estilizar_altair
@@ -30,6 +32,11 @@ from functions import tratar_nota_corretagem_us_inter
 @st.cache_data(ttl=1800, show_spinner=False)
 def _cotacoes_cacheadas(codigos: tuple[str, ...]) -> dict[str, tuple[float, float]]:
     return buscar_cotacoes_atuais(list(codigos))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _selic_cacheada() -> tuple[float, float, str]:
+    return buscar_selic_atual()
 
 
 col_h1, col_h2 = st.columns([5, 1])
@@ -65,12 +72,13 @@ codigos_yf = tuple(
 
 with st.spinner("Atualizando cotações em lote (Yahoo Finance)..."):
     mapa_precos = _cotacoes_cacheadas(codigos_yf)
+    selic_aa, cdi_aa, _ = _selic_cacheada()
     df_carteira, resumo = consolidar_carteira(df_ativos, df_ops, precos_yf=mapa_precos)
 
 usd_brl = resumo["usd_brl"]
 
 # ==================== KPIs CONSOLIDADOS EM BRL ====================
-k1, k2, k3, k4, k5 = st.columns(5)
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("Patrimônio Total", f"R$ {resumo['patrimonio_brl']:,.2f}")
 k2.metric("Custo Investido", f"R$ {resumo['custo_brl']:,.2f}")
 k3.metric(
@@ -80,6 +88,7 @@ k3.metric(
 )
 k4.metric("Realizado + Proventos", f"R$ {resumo.get('pl_realizado_total', 0.0) + resumo.get('proventos_total', 0.0):,.2f}")
 k5.metric("USD / BRL", f"R$ {usd_brl:.4f}")
+k6.metric("Selic (a.a.)", f"{selic_aa:.2f}%", delta=f"CDI {cdi_aa:.2f}%", delta_color="off")
 
 st.markdown("---")
 
@@ -445,7 +454,11 @@ with tab_rf_cripto:
                     dt_ap = parse_data(info_rf.get("data_aplicacao"))
                     dt_venc = parse_data(info_rf.get("vencimento"))
                     trib = calcular_ir_iof_renda_fixa(dt_ap, rendimento_bruto=max(0.0, rend_acum))
-                    partes_meta = [f"**{taxa_cdi:.0f}% do CDI**"]
+                    proj = projetar_rendimento_rf(saldo_atual, taxa_cdi, cdi_aa)
+                    partes_meta = [
+                        f"**{taxa_cdi:.0f}% do CDI** ({proj['taxa_efetiva_aa']:.2f}% a.a.)",
+                        f"~R$ {proj['rendimento_mensal_bruto']:,.2f}/mês bruto",
+                    ]
                     if dt_ap:
                         partes_meta.append(f"Aplicado em {dt_ap.strftime('%d/%m/%Y')} ({trib['dias_corridos']}d)")
                     if dt_venc:
