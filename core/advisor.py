@@ -171,6 +171,22 @@ def criar_ferramentas_consultor(
         )
 
     @tool
+    def consultar_holerites_e_beneficios() -> str:
+        """Consulta os holerites importados: salário base, proventos, INSS, IRRF, alíquota efetiva,
+        FGTS acumulado, PrevPriv PGBL e margem restante até 12% para dedução no IRPF.
+        """
+        from core.holerite import resumir_holerites
+
+        try:
+            df_hol = leitor_aba("holerites")
+        except Exception:
+            df_hol = pd.DataFrame()
+        if df_hol.empty:
+            return "Nenhum holerite importado ainda na aba `holerites`."
+        res = resumir_holerites(df_hol)
+        return json.dumps(res, ensure_ascii=False)
+
+    @tool
     def yf_cotacao_e_fundamentos(ticker: str) -> str:
         """Busca no Yahoo Finance preço atual, máxima/mínima 52s, P/L, Dividend Yield, setor,
         recomendação de analistas e preço-alvo para um ticker (ex: VOO, QQQM, NVDA, PETR4.SA, BTC-USD).
@@ -314,6 +330,7 @@ def criar_ferramentas_consultor(
         consultar_carteira_investimentos,
         consultar_resumo_financeiro,
         consultar_metas_e_reserva,
+        consultar_holerites_e_beneficios,
         yf_cotacao_e_fundamentos,
         yf_historico_performance,
         yf_comparar_ativos,

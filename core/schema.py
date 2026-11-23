@@ -137,6 +137,49 @@ CONFIG = Tab(
     key="chave",
 )
 
+HOLERITES = Tab(
+    name="holerites",
+    columns=[
+        "id",
+        "competencia",
+        "empresa",
+        "cargo",
+        "salario_base",
+        "total_proventos",
+        "total_descontos",
+        "total_liquido",
+        "inss",
+        "irrf",
+        "fgts",
+        "pgbl",
+        "beneficios_desconto",
+        "ajuda_custo",
+        "adiantamento",
+        "base_inss",
+        "base_irrf",
+        "base_fgts",
+        "observacao",
+        "criado_em",
+    ],
+    numeric=[
+        "salario_base",
+        "total_proventos",
+        "total_descontos",
+        "total_liquido",
+        "inss",
+        "irrf",
+        "fgts",
+        "pgbl",
+        "beneficios_desconto",
+        "ajuda_custo",
+        "adiantamento",
+        "base_inss",
+        "base_irrf",
+        "base_fgts",
+    ],
+    key="id",
+)
+
 ALL_TABS: dict[str, Tab] = {
     t.name: t
     for t in [
@@ -152,6 +195,7 @@ ALL_TABS: dict[str, Tab] = {
         RENDA_FIXA,
         COTACOES,
         CONFIG,
+        HOLERITES,
     ]
 }
 

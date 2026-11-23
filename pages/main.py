@@ -134,13 +134,14 @@ with k4:
 st.markdown("---")
 
 # ==================== ABAS PRINCIPAIS ====================
-tab_mes, tab_evolucao, tab_recorrentes, tab_orc_metas, tab_extrato = st.tabs(
+tab_mes, tab_evolucao, tab_recorrentes, tab_orc_metas, tab_extrato, tab_holerites = st.tabs(
     [
         f"Gastos ({mes_selecionado})",
         "Histórico",
         "Fixos & Parcelas",
         "Orçamento & Metas",
         "Extrato",
+        "Holerites & Benefícios",
     ]
 )
 
@@ -453,6 +454,67 @@ with tab_extrato:
         invalidar_abas("transacoes")
         st.success(f"✅ {alteradas} transação(ões) atualizada(s)!")
         st.rerun()
+
+with tab_holerites:
+    from core.holerite import resumir_holerites
+
+    st.subheader("Holerites, Impostos & Benefícios")
+    try:
+        df_hol = ler_aba("holerites")
+    except Exception:
+        df_hol = pd.DataFrame()
+
+    if df_hol.empty:
+        st.info("Nenhum holerite importado ainda. Suba seus PDFs em **Lançar & Importar Gastos → Holerite (PDF)**.")
+    else:
+        res_h = resumir_holerites(df_hol)
+        h1, h2, h3, h4 = st.columns(4)
+        h1.metric("Último Salário Base", f"R$ {res_h['ultimo_salario_base']:,.2f}")
+        h2.metric("FGTS Acumulado", f"R$ {res_h['total_fgts']:,.2f}")
+        h3.metric(
+            "PrevPriv PGBL",
+            f"R$ {res_h['total_pgbl']:,.2f}",
+            delta=f"Margem 12% IR: R$ {res_h['margem_pgbl_restante']:,.2f}",
+            delta_color="off",
+        )
+        h4.metric(
+            "INSS + IRRF Retidos",
+            f"R$ {res_h['total_inss'] + res_h['total_irrf']:,.2f}",
+            delta=f"Alíquota efetiva {res_h['aliquota_efetiva_pct']:.1f}%",
+            delta_color="off",
+        )
+
+        df_hol_ord = df_hol.sort_values("competencia")
+        st.dataframe(
+            df_hol_ord[
+                [
+                    "competencia",
+                    "salario_base",
+                    "total_proventos",
+                    "total_liquido",
+                    "inss",
+                    "irrf",
+                    "fgts",
+                    "pgbl",
+                    "beneficios_desconto",
+                    "ajuda_custo",
+                ]
+            ],
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "competencia": "Competência",
+                "salario_base": st.column_config.NumberColumn("Salário Base", format="R$ %.2f"),
+                "total_proventos": st.column_config.NumberColumn("Proventos", format="R$ %.2f"),
+                "total_liquido": st.column_config.NumberColumn("Líquido Folha", format="R$ %.2f"),
+                "inss": st.column_config.NumberColumn("INSS", format="R$ %.2f"),
+                "irrf": st.column_config.NumberColumn("IRRF", format="R$ %.2f"),
+                "fgts": st.column_config.NumberColumn("FGTS", format="R$ %.2f"),
+                "pgbl": st.column_config.NumberColumn("PGBL", format="R$ %.2f"),
+                "beneficios_desconto": st.column_config.NumberColumn("Desc. Benefícios", format="R$ %.2f"),
+                "ajuda_custo": st.column_config.NumberColumn("Ajuda Custo", format="R$ %.2f"),
+            },
+        )
 
 # ==================== AÇÕES RÁPIDAS (PADRÃO NUTRIV3) ====================
 st.divider()

@@ -52,12 +52,13 @@ qtd_revisar = int((df_tx["status"] == "revisar").sum()) if not df_tx.empty else 
 qtd_provisorias = int((df_tx["status"] == "provisoria").sum()) if not df_tx.empty else 0
 badge_rev = f" ({qtd_revisar + qtd_provisorias})" if (qtd_revisar + qtd_provisorias) > 0 else ""
 
-tab_rapido, tab_importar, tab_revisar, tab_regras = st.tabs(
+tab_rapido, tab_importar, tab_revisar, tab_regras, tab_holerite = st.tabs(
     [
         "⚡ Lançamento Rápido",
         "📂 Importar Extratos / Faturas",
         f"📱 Revisar & iPhone{badge_rev}",
         "⚙️ Regras Automáticas",
+        "🧾 Holerite (PDF)",
     ]
 )
 
@@ -460,3 +461,65 @@ with tab_regras:
 
     if not df_regras.empty:
         st.dataframe(df_regras, hide_index=True, use_container_width=True)
+
+# ==============================================================================
+# ABA 5: IMPORTAR HOLERITE (PDF MERCADO PAGO — SEM DUPLICAR TRANSAÇÕES)
+# ==============================================================================
+with tab_holerite:
+    from core.holerite import tratar_holerite_pdf
+
+    st.subheader("Importar Holerite (PDF)")
+    st.caption(
+        "Extrai Salário Base, INSS, IRRF, FGTS, PrevPriv PGBL e benefícios direto para a aba `holerites` "
+        "(não duplica o salário líquido que já entra pelo extrato bancário)."
+    )
+    pdfs_hol = st.file_uploader(
+        "Selecione 1 ou mais PDFs de holerite",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="upload_holerites_pdf",
+    )
+    if pdfs_hol:
+        registros_hol = []
+        for arq in pdfs_hol:
+            try:
+                reg = tratar_holerite_pdf(arq)
+                reg["observacao"] = f"Importado de {arq.name}"
+                registros_hol.append(reg)
+            except Exception as exc:
+                st.error(f"Erro ao ler `{arq.name}`: {exc}")
+
+        if registros_hol:
+            df_hol_prev = pd.DataFrame(registros_hol)
+            st.dataframe(
+                df_hol_prev[
+                    [
+                        "competencia",
+                        "salario_base",
+                        "total_proventos",
+                        "total_descontos",
+                        "total_liquido",
+                        "inss",
+                        "irrf",
+                        "fgts",
+                        "pgbl",
+                        "beneficios_desconto",
+                    ]
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+            if st.button("💾 Salvar Holerite(s) na Planilha", type="primary", use_container_width=True):
+                repo = obter_repo()
+                repo.garantir_aba("holerites")
+                existentes = ler_aba("holerites")
+                ids_ex = set(existentes["id"].astype(str)) if not existentes.empty else set()
+                novos = [r for r in registros_hol if str(r["id"]) not in ids_ex]
+                atualizados = [r for r in registros_hol if str(r["id"]) in ids_ex]
+                if novos:
+                    repo.append("holerites", novos)
+                for r in atualizados:
+                    repo.update_by_key("holerites", str(r["id"]), r)
+                invalidar_abas("holerites")
+                st.success(f"✅ {len(novos)} novo(s) e {len(atualizados)} atualizado(s) na aba `holerites`!")
+                st.rerun()

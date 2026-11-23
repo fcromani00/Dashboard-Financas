@@ -127,7 +127,7 @@ class TestMigrarTudo(unittest.TestCase):
     def test_conferencia_bate(self):
         res = migrar_tudo(df_v1_exemplo(), None, None)
         self.assertEqual(res.relatorio["meses_divergentes"], 0)
-        self.assertEqual(set(res.tabelas), set(schema.ALL_TABS))
+        self.assertEqual(set(res.tabelas), set(schema.ALL_TABS) - {"holerites"})
         for nome, df in res.tabelas.items():
             self.assertEqual(list(df.columns)[: len(schema.ALL_TABS[nome].columns)], schema.ALL_TABS[nome].columns, nome)
 

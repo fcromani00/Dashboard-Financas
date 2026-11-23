@@ -360,6 +360,48 @@ class TestPortfolioV2(unittest.TestCase):
         self.assertEqual(proj["taxa_efetiva_aa"], 16.38)
         self.assertGreater(proj["rendimento_mensal_bruto"], 120.0)
 
+    def test_holerite_parser_e_resumo(self):
+        from core.holerite import parse_holerite_texto, resumir_holerites
+
+        ocr = """
+        MERCADOPAGO.COM REP. LTDA CNPJ: 10.573.521/0001-91
+        SALARIO
+        11.660,00
+        0010 Salário 14,00 5.441,33
+        0830 Ajuda de Custo Escritorio 200,00
+        /314 Contr. INSS Remuneração 14,00 988,07
+        /401 Tributo IRRF 27,50 97,08
+        /505 Vale-refeição empregado 86,40
+        /B02 Adiantamento pago 2.176,53
+        5300 Assistência Médica 100,00
+        9012 Convênio Odontológico 32,77
+        9FPH PrevPriv PGBL 2 466,40
+        9VA1 Vale Alimentação Empregad 36,75
+        MES: Outubro ANO: 2026
+        Base IRRF: 4795.29 Base INSS: 13732.88
+        TOTAL DE PROVENTOS 14.741,31
+        TOTAL DE DESCONTOS 12.275,55
+        Base FGTS: 19562.88 FGTS: 1565.03
+        TOTAL LÍQUIDO 2.465,76
+        """
+        reg = parse_holerite_texto(ocr)
+        self.assertEqual(reg["competencia"], "2026-10")
+        self.assertEqual(reg["salario_base"], 11660.0)
+        self.assertEqual(reg["total_proventos"], 14741.31)
+        self.assertEqual(reg["total_liquido"], 2465.76)
+        self.assertEqual(reg["inss"], 988.07)
+        self.assertEqual(reg["irrf"], 97.08)
+        self.assertEqual(reg["fgts"], 1565.03)
+        self.assertEqual(reg["pgbl"], 466.40)
+        self.assertEqual(reg["ajuda_custo"], 200.0)
+        self.assertEqual(reg["adiantamento"], 2176.53)
+        self.assertAlmostEqual(reg["beneficios_desconto"], 255.92, places=2)
+
+        res = resumir_holerites(pd.DataFrame([reg]))
+        self.assertEqual(res["meses"], 1)
+        self.assertEqual(res["total_fgts"], 1565.03)
+        self.assertGreater(res["margem_pgbl_restante"], 1000.0)
+
 
 if __name__ == "__main__":
     unittest.main()
