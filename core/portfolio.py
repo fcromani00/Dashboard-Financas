@@ -596,6 +596,9 @@ def exportar_yahoo_financas(
                             fila[0]["Quantity"] -= restante
                             restante = 0.0
             for fila in lotes_por_ativo.values():
+                custo_ativo = sum(l["Quantity"] * l["Purchase Price"] for l in fila)
+                if custo_ativo < 0.01:  # descarta "poeira" de frações residuais (ex.: BCS 0.000081)
+                    continue
                 for lote in fila:
                     if lote["Quantity"] > 1e-6:
                         linhas.append(

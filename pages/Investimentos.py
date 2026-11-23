@@ -371,14 +371,18 @@ with tab_us:
     with cy1:
         modo_yf = st.radio(
             "Formato de exportação",
-            options=["lotes_fifo", "abertas", "historico"],
+            options=["lotes_fifo", "abertas"],
             format_func=lambda x: {
-                "lotes_fifo": "Lotes históricos em carteira (FIFO — datas reais, 0 erros no Yahoo)",
-                "abertas": "Consolidado por ativo (1 linha/ativo, preço médio)",
-                "historico": "Todas as ordens brutas (inclui vendas negativas — gera avisos no Yahoo)",
+                "lotes_fifo": "Lotes de compra em carteira — datas e preços reais (Recomendado)",
+                "abertas": "Consolidado — 1 linha por ativo com preço médio",
             }[x],
             horizontal=False,
             key="yf_export_modo",
+        )
+        st.caption(
+            "ℹ️ O CSV do Yahoo só aceita **compras** (não tem coluna de venda). Vendas são abatidas dos lotes "
+            "mais antigos (FIFO, mesmo critério do app Inter), então Qtd e Custo batem com a corretora. "
+            "Antes de importar, **apague o portfólio importado anteriormente** no Yahoo para não duplicar."
         )
     with cy2:
         incluir_cripto_yf = st.checkbox("Incluir Cripto (BTC/ETH/SOL-USD)", value=False, key="yf_incluir_cripto")
