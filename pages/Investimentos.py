@@ -22,6 +22,7 @@ from core.portfolio import (
     exportar_yahoo_financas,
 )
 from core.state import invalidar_abas, ler_aba, mapa_config, obter_repo, salvar_config
+from core.theme import badge_instituicao_html
 from core.utils import agora_iso, id_deterministico, novo_id, parse_data, parse_numero
 from functions import tratar_nota_corretagem_us_inter
 
@@ -33,10 +34,10 @@ def _cotacoes_cacheadas(codigos: tuple[str, ...]) -> dict[str, tuple[float, floa
 
 col_h1, col_h2 = st.columns([5, 1])
 with col_h1:
-    st.title("📈 Carteira de Investimentos")
-    st.caption("Ações/ETFs EUA (Inter US) · Renda Fixa (Porquinho Inter & CDB Mercado Pago) · Bitcoin (Binance)")
+    st.title("Carteira de Investimentos")
+    st.caption("Inter US · Porquinho Inter · Cofrinhos & CDB Mercado Pago · Cripto")
 with col_h2:
-    if st.button("🔄 Atualizar Preços", use_container_width=True):
+    if st.button("Atualizar Preços", use_container_width=True):
         _cotacoes_cacheadas.clear()
         invalidar_abas("ativos", "operacoes", "renda_fixa")
         st.rerun()
@@ -70,25 +71,25 @@ usd_brl = resumo["usd_brl"]
 
 # ==================== KPIs CONSOLIDADOS EM BRL ====================
 k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("💰 Patrimônio Total (BRL)", f"R$ {resumo['patrimonio_brl']:,.2f}")
-k2.metric("📊 Custo Investido (BRL)", f"R$ {resumo['custo_brl']:,.2f}")
+k1.metric("Patrimônio Total", f"R$ {resumo['patrimonio_brl']:,.2f}")
+k2.metric("Custo Investido", f"R$ {resumo['custo_brl']:,.2f}")
 k3.metric(
-    "📈 P&L Aberto (BRL)",
+    "P&L Aberto",
     f"R$ {resumo['pl_aberto_brl']:,.2f}",
     delta=f"{resumo.get('pl_aberto_pct', 0.0):.2f}%",
 )
-k4.metric("💵 P&L Realizado + Proventos", f"R$ {resumo.get('pl_realizado_total', 0.0) + resumo.get('proventos_total', 0.0):,.2f}")
-k5.metric("🇺🇸 Dólar (USD/BRL)", f"R$ {usd_brl:.4f}")
+k4.metric("Realizado + Proventos", f"R$ {resumo.get('pl_realizado_total', 0.0) + resumo.get('proventos_total', 0.0):,.2f}")
+k5.metric("USD / BRL", f"R$ {usd_brl:.4f}")
 
 st.markdown("---")
 
 tab_visao, tab_evol_aporte, tab_us, tab_rf_cripto, tab_lancar = st.tabs(
     [
-        "📊 Alocação & Visão Geral",
-        "🧭 Evolução & Próximo Aporte",
-        "🇺🇸 Ações & ETFs (Inter US)",
-        "🐷 Renda Fixa & ₿ Bitcoin",
-        "➕ Lançar Operação / Nota PDF",
+        "Alocação",
+        "Evolução & Aporte",
+        "EUA (Inter US)",
+        "Renda Fixa & Cripto",
+        "Lançar / Nota PDF",
     ]
 )
 
@@ -362,47 +363,46 @@ with tab_us:
             },
         )
 
-    st.markdown("---")
-    st.subheader("📥 Exportar Carteira para Yahoo Finanças (CSV)")
-    st.caption(
-        "Gera o arquivo `.csv` no formato oficial do Yahoo Finance (`Symbol, Trade Date, Purchase Price, Quantity`) — igual à aba `Formato Yahoo`."
-    )
-    cy1, cy2, cy3 = st.columns([2.2, 1.4, 1.4])
-    with cy1:
-        modo_yf = st.radio(
-            "Formato de exportação",
-            options=["lotes_fifo", "abertas"],
-            format_func=lambda x: {
-                "lotes_fifo": "Lotes de compra em carteira — datas e preços reais (Recomendado)",
-                "abertas": "Consolidado — 1 linha por ativo com preço médio",
-            }[x],
-            horizontal=False,
-            key="yf_export_modo",
-        )
+    with st.expander("Exportar Carteira para Yahoo Finanças (CSV)", expanded=False):
         st.caption(
-            "ℹ️ O CSV do Yahoo só aceita **compras** (não tem coluna de venda). Vendas são abatidas dos lotes "
-            "mais antigos (FIFO, mesmo critério do app Inter), então Qtd e Custo batem com a corretora. "
-            "Antes de importar, **apague o portfólio importado anteriormente** no Yahoo para não duplicar."
+            "Gera o arquivo `.csv` no formato oficial do Yahoo Finance (`Symbol, Trade Date, Purchase Price, Quantity`)."
         )
-    with cy2:
-        incluir_cripto_yf = st.checkbox("Incluir Cripto (BTC/ETH/SOL-USD)", value=False, key="yf_incluir_cripto")
-    df_yf_exp, csv_yf_bytes = exportar_yahoo_financas(
-        df_ativos,
-        df_ops,
-        modo=modo_yf,
-        incluir_cripto=incluir_cripto_yf,
-        usd_brl=usd_brl,
-    )
-    with cy3:
-        st.download_button(
-            label=f"⬇️ Baixar CSV Yahoo ({len(df_yf_exp)} linhas)",
-            data=csv_yf_bytes,
-            file_name=f"carteira_yahoo_{date.today().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-            type="primary",
-            use_container_width=True,
-            disabled=df_yf_exp.empty,
+        cy1, cy2, cy3 = st.columns([2.2, 1.4, 1.4])
+        with cy1:
+            modo_yf = st.radio(
+                "Formato de exportação",
+                options=["lotes_fifo", "abertas"],
+                format_func=lambda x: {
+                    "lotes_fifo": "Lotes de compra em carteira — datas e preços reais (Recomendado)",
+                    "abertas": "Consolidado — 1 linha por ativo com preço médio",
+                }[x],
+                horizontal=False,
+                key="yf_export_modo",
+            )
+            st.caption(
+                "ℹ️ O CSV do Yahoo só aceita **compras** (não tem coluna de venda). Vendas são abatidas dos lotes "
+                "mais antigos (FIFO, mesmo critério do app Inter), então Qtd e Custo batem com a corretora. "
+                "Antes de importar, **apague o portfólio importado anteriormente** no Yahoo para não duplicar."
+            )
+        with cy2:
+            incluir_cripto_yf = st.checkbox("Incluir Cripto (BTC/ETH/SOL-USD)", value=False, key="yf_incluir_cripto")
+        df_yf_exp, csv_yf_bytes = exportar_yahoo_financas(
+            df_ativos,
+            df_ops,
+            modo=modo_yf,
+            incluir_cripto=incluir_cripto_yf,
+            usd_brl=usd_brl,
         )
+        with cy3:
+            st.download_button(
+                label=f"⬇️ Baixar CSV Yahoo ({len(df_yf_exp)} linhas)",
+                data=csv_yf_bytes,
+                file_name=f"carteira_yahoo_{date.today().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                type="primary",
+                use_container_width=True,
+                disabled=df_yf_exp.empty,
+            )
 
 # ==============================================================================
 # ABA 3: RENDA FIXA (PORQUINHO INTER / CDB MP) & BITCOIN (BINANCE)
@@ -432,7 +432,7 @@ with tab_rf_cripto:
             rend_acum = saldo_atual - custo_atual
 
             with st.container(border=True):
-                st.markdown(f"#### {nome} (`{conta}`)")
+                st.markdown(f"#### {nome} &nbsp; {badge_instituicao_html(conta)}", unsafe_allow_html=True)
                 m_a, m_b, m_c = st.columns(3)
                 m_a.metric("Saldo Atual", f"R$ {saldo_atual:,.2f}")
                 m_b.metric("Total Aportado", f"R$ {custo_atual:,.2f}")
@@ -456,116 +456,123 @@ with tab_rf_cripto:
                             f"⚠️ Em janela de **IOF regressivo ({trib['aliquota_iof_pct']:.0f}%)** — isenção total de IOF em **{trib['data_isencao_iof'].strftime('%d/%m/%Y')}** (faltam {trib['dias_para_isencao_iof']} dias)."
                         )
 
-                with st.form(f"form_rf_{at_id}", clear_on_submit=True):
-                    f1, f2, f3 = st.columns([1.4, 1.3, 1.3])
-                    with f1:
-                        acao_rf = st.selectbox(
-                            "Ação",
-                            options=["aporte", "resgate", "ajuste_saldo"],
-                            format_func=lambda x: {
-                                "aporte": "➕ Novo Aporte",
-                                "resgate": "➖ Resgate",
-                                "ajuste_saldo": "🎯 Cravar Saldo Atual do App",
-                            }[x],
-                            key=f"acao_{at_id}",
-                        )
-                    with f2:
-                        val_rf = st.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f", key=f"val_{at_id}")
-                    with f3:
-                        dt_rf = st.date_input("Data", value=date.today(), format="DD/MM/YYYY", key=f"dt_{at_id}")
+                with st.expander("Atualizar saldo / registrar movimentação", expanded=False):
+                    with st.form(f"form_rf_{at_id}", clear_on_submit=True):
+                        f1, f2, f3 = st.columns([1.4, 1.3, 1.3])
+                        with f1:
+                            acao_rf = st.selectbox(
+                                "Ação",
+                                options=["aporte", "resgate", "ajuste_saldo"],
+                                format_func=lambda x: {
+                                    "aporte": "➕ Novo Aporte",
+                                    "resgate": "➖ Resgate",
+                                    "ajuste_saldo": "🎯 Cravar Saldo Atual do App",
+                                }[x],
+                                key=f"acao_{at_id}",
+                            )
+                        with f2:
+                            val_rf = st.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f", key=f"val_{at_id}")
+                        with f3:
+                            dt_rf = st.date_input("Data", value=date.today(), format="DD/MM/YYYY", key=f"dt_{at_id}")
 
-                    if st.form_submit_button("💾 Registrar", use_container_width=True):
-                        if val_rf > 0:
+                        if st.form_submit_button("Salvar", use_container_width=True):
+                            if val_rf > 0:
+                                obter_repo().append(
+                                    "operacoes",
+                                    [
+                                        {
+                                            "id": novo_id(),
+                                            "data": dt_rf,
+                                            "ativo_id": at_id,
+                                            "conta": conta,
+                                            "tipo": acao_rf,
+                                            "quantidade": 1.0,
+                                            "preco": round(val_rf, 2),
+                                            "taxas": 0.0,
+                                            "valor_total": round(val_rf, 2),
+                                            "moeda": "BRL",
+                                            "importacao_id": "",
+                                            "observacao": f"{acao_rf} via painel Renda Fixa",
+                                            "criado_em": agora_iso(),
+                                        }
+                                    ],
+                                )
+                                invalidar_abas("operacoes")
+                                st.toast(f"✅ {nome} atualizado!")
+                                st.rerun()
+
+    with c_btc:
+        st.subheader("Cripto")
+        st.markdown(
+            f"{badge_instituicao_html('Binance')} &nbsp; {badge_instituicao_html('Inter Cripto')}",
+            unsafe_allow_html=True,
+        )
+        preco_btc_brl, var_btc = mapa_precos.get("BTC-BRL", (0.0, 0.0))
+        st.metric("Cotação Bitcoin (BTC-BRL)", f"R$ {preco_btc_brl:,.2f}", f"{var_btc:.2f}% (dia)")
+
+        df_cripto = df_carteira[df_carteira["classe"] == "cripto"].copy() if not df_carteira.empty else pd.DataFrame()
+        if not df_cripto.empty:
+            st.dataframe(
+                df_cripto[["ticker", "conta", "quantidade", "preco_medio", "valor_brl", "pl_aberto_pct"]],
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "ticker": "Ativo",
+                    "conta": "Corretora",
+                    "quantidade": st.column_config.NumberColumn("Qtd", format="%.6f"),
+                    "preco_medio": st.column_config.NumberColumn("PM (R$)", format="R$ %.2f"),
+                    "valor_brl": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f"),
+                    "pl_aberto_pct": st.column_config.NumberColumn("P&L %", format="%.2f%%"),
+                },
+            )
+
+        at_btc = df_ativos[df_ativos["ticker"] == "BTC"]
+        if not at_btc.empty:
+            btc_id = str(at_btc.iloc[0]["id"])
+            with st.expander("Registrar compra ou venda de BTC (Binance)", expanded=False):
+                with st.form("form_btc", clear_on_submit=True):
+                    c_b1, c_b2, c_b3 = st.columns(3)
+                    with c_b1:
+                        tipo_btc = st.selectbox("Tipo", options=["compra", "venda"])
+                    with c_b2:
+                        valor_aporte_brl = st.number_input("Valor total em R$", min_value=0.0, step=100.0, format="%.2f")
+                    with c_b3:
+                        qtd_btc_in = st.number_input(
+                            "Quantidade de BTC (ou 0 p/ calcular)",
+                            min_value=0.0,
+                            step=0.0001,
+                            format="%.8f",
+                        )
+                    dt_btc = st.date_input("Data da operação", value=date.today(), format="DD/MM/YYYY")
+
+                    if st.form_submit_button("Salvar operação BTC", type="primary", use_container_width=True):
+                        if valor_aporte_brl > 0 or qtd_btc_in > 0:
+                            q_final = qtd_btc_in if qtd_btc_in > 0 else (valor_aporte_brl / preco_btc_brl if preco_btc_brl > 0 else 0.0)
+                            p_final = (valor_aporte_brl / q_final) if (valor_aporte_brl > 0 and q_final > 0) else preco_btc_brl
+                            vt_final = valor_aporte_brl if valor_aporte_brl > 0 else (q_final * p_final)
                             obter_repo().append(
                                 "operacoes",
                                 [
                                     {
                                         "id": novo_id(),
-                                        "data": dt_rf,
-                                        "ativo_id": at_id,
-                                        "conta": conta,
-                                        "tipo": acao_rf,
-                                        "quantidade": 1.0,
-                                        "preco": round(val_rf, 2),
+                                        "data": dt_btc,
+                                        "ativo_id": btc_id,
+                                        "conta": "Binance",
+                                        "tipo": tipo_btc,
+                                        "quantidade": round(q_final, 8),
+                                        "preco": round(p_final, 2),
                                         "taxas": 0.0,
-                                        "valor_total": round(val_rf, 2),
+                                        "valor_total": round(vt_final, 2),
                                         "moeda": "BRL",
                                         "importacao_id": "",
-                                        "observacao": f"{acao_rf} via painel Renda Fixa",
+                                        "observacao": "Binance BTC",
                                         "criado_em": agora_iso(),
                                     }
                                 ],
                             )
                             invalidar_abas("operacoes")
-                            st.toast(f"✅ {nome} atualizado!")
+                            st.success("✅ Operação de BTC registrada!")
                             st.rerun()
-
-    with c_btc:
-        st.subheader("₿ Bitcoin (Binance)")
-        preco_btc_brl, var_btc = mapa_precos.get("BTC-BRL", (0.0, 0.0))
-        st.metric("Cotação Bitcoin (BTC-BRL)", f"R$ {preco_btc_brl:,.2f}", f"{var_btc:.2f}% (dia)")
-
-        at_btc = df_ativos[df_ativos["ticker"] == "BTC"]
-        if not at_btc.empty:
-            btc_id = str(at_btc.iloc[0]["id"])
-            pos_btc = (
-                df_carteira[df_carteira["ativo_id"] == btc_id].iloc[0]
-                if not df_carteira.empty and (df_carteira["ativo_id"] == btc_id).any()
-                else None
-            )
-            qtd_btc = float(pos_btc["quantidade"]) if pos_btc is not None else 0.0
-            val_btc = float(pos_btc["valor_brl"]) if pos_btc is not None else 0.0
-            pm_btc = float(pos_btc["preco_medio"]) if pos_btc is not None else 0.0
-
-            b1, b2, b3 = st.columns(3)
-            b1.metric("Quantidade BTC", f"{qtd_btc:.8f} BTC")
-            b2.metric("Valor Atual (BRL)", f"R$ {val_btc:,.2f}")
-            b3.metric("Preço Médio (BRL)", f"R$ {pm_btc:,.2f}")
-
-            with st.form("form_btc", clear_on_submit=True):
-                st.markdown("**Registrar Compra ou Venda de BTC (Binance)**")
-                c_b1, c_b2, c_b3 = st.columns(3)
-                with c_b1:
-                    tipo_btc = st.selectbox("Tipo", options=["compra", "venda"])
-                with c_b2:
-                    valor_aporte_brl = st.number_input("Valor total em R$", min_value=0.0, step=100.0, format="%.2f")
-                with c_b3:
-                    qtd_btc_in = st.number_input(
-                        "Quantidade de BTC (ou 0 p/ calcular pela cotação)",
-                        min_value=0.0,
-                        step=0.0001,
-                        format="%.8f",
-                    )
-                dt_btc = st.date_input("Data da operação", value=date.today(), format="DD/MM/YYYY")
-
-                if st.form_submit_button("💾 Salvar operação BTC", type="primary", use_container_width=True):
-                    if valor_aporte_brl > 0 or qtd_btc_in > 0:
-                        q_final = qtd_btc_in if qtd_btc_in > 0 else (valor_aporte_brl / preco_btc_brl if preco_btc_brl > 0 else 0.0)
-                        p_final = (valor_aporte_brl / q_final) if (valor_aporte_brl > 0 and q_final > 0) else preco_btc_brl
-                        vt_final = valor_aporte_brl if valor_aporte_brl > 0 else (q_final * p_final)
-                        obter_repo().append(
-                            "operacoes",
-                            [
-                                {
-                                    "id": novo_id(),
-                                    "data": dt_btc,
-                                    "ativo_id": btc_id,
-                                    "conta": "Binance",
-                                    "tipo": tipo_btc,
-                                    "quantidade": round(q_final, 8),
-                                    "preco": round(p_final, 2),
-                                    "taxas": 0.0,
-                                    "valor_total": round(vt_final, 2),
-                                    "moeda": "BRL",
-                                    "importacao_id": "",
-                                    "observacao": "Binance BTC",
-                                    "criado_em": agora_iso(),
-                                }
-                            ],
-                        )
-                        invalidar_abas("operacoes")
-                        st.success("✅ Operação de BTC registrada!")
-                        st.rerun()
 
 # ==============================================================================
 # ABA 4: LANÇAR OPERAÇÃO MANUAL OU IMPORTAR NOTA DE CORRETAGEM INTER US

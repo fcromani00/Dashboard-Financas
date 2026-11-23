@@ -23,15 +23,6 @@ except Exception as exc:
     st.error(f"Erro ao carregar dados da planilha V2: {exc}")
     st.stop()
 
-# Cabeçalho compacto
-col_t1, col_t2 = st.columns([5, 1])
-with col_t1:
-    st.title("💰 Visão Geral & Orçamento")
-with col_t2:
-    if st.button("🔄 Atualizar", use_container_width=True):
-        invalidar_abas()
-        st.rerun()
-
 if df_tx.empty:
     st.info("Nenhuma transação encontrada na aba `transacoes`.")
     st.stop()
@@ -44,33 +35,37 @@ dias_sem_lancar = (date.today() - ult_data).days
 qtd_revisar = int((df_tx["status"] == "revisar").sum())
 qtd_provisorias = int((df_tx["status"] == "provisoria").sum())
 
-# Banner de status do hábito
 banners = []
 if dias_sem_lancar <= 3:
-    banners.append(f"🟢 Último registro em **{ult_data.strftime('%d/%m/%Y')}** (em dia!)")
+    banners.append(f"🟢 Último registro: **{ult_data.strftime('%d/%m/%Y')}** (em dia)")
 elif dias_sem_lancar <= 10:
-    banners.append(f"🟡 Último registro em **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias atrás)")
+    banners.append(f"🟡 Último registro: **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias atrás)")
 else:
-    banners.append(f"🔴 Último registro em **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias sem atualizar)")
-
+    banners.append(f"🔴 Último registro: **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias sem atualizar)")
 if qtd_revisar > 0:
-    banners.append(f"📝 **{qtd_revisar}** item(ns) aguardando categoria")
+    banners.append(f"📝 **{qtd_revisar}** aguardando categoria")
 if qtd_provisorias > 0:
-    banners.append(f"📱 **{qtd_provisorias}** lançamento(s) do iPhone aguardando fatura")
+    banners.append(f"📱 **{qtd_provisorias}** do iPhone aguardando fatura")
 
-st.caption(" · ".join(banners))
-
-# Filtros na barra lateral (e seletor rápido de mês no topo para facilitar no iPhone)
+# Cabeçalho compacto com seletor de mês e filtros em popover
 meses_disp = sorted(df_tx["ano_mes"].unique().tolist(), reverse=True)
 contas_disp = sorted([c for c in df_tx["conta"].unique().tolist() if c])
 
-col_f1, col_f2, col_f3 = st.columns([1.6, 2, 1.4])
-with col_f1:
-    mes_selecionado = st.selectbox("📅 Mês de referência", options=meses_disp, index=0)
-with col_f2:
-    contas_sel = st.multiselect("🏦 Contas", options=contas_disp, default=contas_disp)
-with col_f3:
-    incluir_transferencias = st.toggle("Mostrar transferências internas", value=False)
+col_t1, col_m, col_pop, col_t2 = st.columns([3.4, 1.4, 1.3, 1.0])
+with col_t1:
+    st.title("Visão Geral & Orçamento")
+with col_m:
+    mes_selecionado = st.selectbox("Mês", options=meses_disp, index=0, label_visibility="collapsed")
+with col_pop:
+    with st.popover("Filtros", use_container_width=True):
+        contas_sel = st.multiselect("Contas", options=contas_disp, default=contas_disp)
+        incluir_transferencias = st.toggle("Mostrar transferências internas", value=False)
+with col_t2:
+    if st.button("Atualizar", use_container_width=True):
+        invalidar_abas()
+        st.rerun()
+
+st.caption(" · ".join(banners + [f"{len(contas_sel)} conta(s) ativa(s)"]))
 
 df_filtrado_contas = df_tx[df_tx["conta"].isin(contas_sel)] if contas_sel else df_tx.copy()
 df_operacional = (
@@ -112,7 +107,7 @@ disponivel_por_dia = restante_orcamento / dias_restantes
 # ==================== KPIs DO MÊS ====================
 k1, k2, k3, k4 = st.columns(4)
 with k1:
-    st.metric("💵 Receitas do Mês", f"R$ {receitas_mes:,.2f}")
+    st.metric("Receitas", f"R$ {receitas_mes:,.2f}")
 with k2:
     delta_orc = (
         f"R$ {teto_orcamento_mes - despesas_mes:,.2f} vs orçado"
@@ -120,19 +115,19 @@ with k2:
         else None
     )
     st.metric(
-        "💸 Despesas do Mês",
+        "Despesas",
         f"R$ {despesas_mes:,.2f}",
         delta=delta_orc,
         delta_color="normal" if (teto_orcamento_mes == 0 or despesas_mes <= teto_orcamento_mes) else "inverse",
     )
 with k3:
     st.metric(
-        "📊 Saldo do Mês",
+        "Saldo do Mês",
         f"R$ {saldo_mes:,.2f}",
         delta=f"{taxa_poupanca:.1f}% poupado" if receitas_mes > 0 else None,
     )
 with k4:
-    label_dia = "🎯 Restante / dia (Orçamento)" if teto_orcamento_mes > 0 else "🎯 Saldo / dia"
+    label_dia = "Restante / dia" if teto_orcamento_mes > 0 else "Saldo / dia"
     st.metric(label_dia, f"R$ {disponivel_por_dia:,.2f}")
 
 st.markdown("---")
@@ -140,11 +135,11 @@ st.markdown("---")
 # ==================== ABAS PRINCIPAIS ====================
 tab_mes, tab_evolucao, tab_recorrentes, tab_orc_metas, tab_extrato = st.tabs(
     [
-        f"📊 Gastos em {mes_selecionado}",
-        "📈 Receitas vs. Despesas (Histórico)",
-        "🔁 Fixos, Assinaturas & Parcelas",
-        "🎯 Orçamento & Reserva",
-        "📋 Extrato & Edição Rápida",
+        f"Gastos ({mes_selecionado})",
+        "Histórico",
+        "Fixos & Parcelas",
+        "Orçamento & Metas",
+        "Extrato",
     ]
 )
 
@@ -166,7 +161,7 @@ with tab_mes:
 
             chart_cat = (
                 alt.Chart(por_cat)
-                .mark_bar(cornerRadiusEnd=4, color="#E5533D")
+                .mark_bar(cornerRadiusEnd=6, color="#FF7A00")
                 .encode(
                     x=alt.X("gasto_abs:Q", title="Gasto (R$)"),
                     y=alt.Y("categoria:N", sort="-x", title="Categoria"),
