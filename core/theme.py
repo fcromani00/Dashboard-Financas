@@ -108,16 +108,32 @@ def aplicar_tema_css() -> None:
         border-radius: 10px !important;
     }}
     /* Botões */
-    .stButton > button, .stDownloadButton > button {{
+    .stButton > button, .stDownloadButton > button, [data-testid="stPopover"] > button {{
         border-radius: 8px;
         font-weight: 600;
-        border: 1px solid {p["border"]};
+        background-color: {p["surface"]} !important;
+        color: {p["text"]} !important;
+        border: 1px solid {p["border"]} !important;
+    }}
+    .stButton > button:hover, .stDownloadButton > button:hover, [data-testid="stPopover"] > button:hover {{
+        background-color: {p["surface_alt"]} !important;
+        border-color: {p["accent"]} !important;
     }}
     .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {{
         background-color: {p["accent"]} !important;
         border-color: {p["accent"]} !important;
         color: #FFFFFF !important;
     }}
+    /* Inputs, selects e textareas */
+    [data-baseweb="select"] > div, [data-baseweb="input"] > div, textarea {{
+        background-color: {p["surface"]} !important;
+        color: {p["text"]} !important;
+        border-color: {p["border"]} !important;
+    }}
+    [data-baseweb="select"] span, [data-baseweb="input"] input {{
+        color: {p["text"]} !important;
+    }}
+    {"[data-testid='stDataFrame'] { filter: invert(0.93) hue-rotate(180deg); border-radius: 10px; overflow: hidden; border: 1px solid #CBD5E1; }" if modo == "light" else ""}
     /* Abas */
     .stTabs [data-baseweb="tab-list"] {{
         gap: 6px;
@@ -206,4 +222,22 @@ def badge_instituicao_html(conta: str) -> str:
         f'<span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;'
         f'border-radius:50%;background:{cor};color:#fff;font-size:0.65rem;font-weight:800;">{letra}</span>'
         f"{nome}</span>"
+    )
+
+
+def estilizar_altair(chart):
+    """Configura fundo transparente e cores de eixos/títulos alinhadas ao tema Dark/Light atual."""
+    p = _PALETAS[tema_atual()]
+    return (
+        chart.configure(background="transparent")
+        .configure_view(strokeOpacity=0)
+        .configure_axis(
+            labelColor=p["muted"],
+            titleColor=p["muted"],
+            gridColor=p["border"],
+            domainColor=p["border"],
+            tickColor=p["border"],
+        )
+        .configure_title(color=p["text"], fontSize=14, anchor="start")
+        .configure_legend(labelColor=p["muted"], titleColor=p["text"])
     )

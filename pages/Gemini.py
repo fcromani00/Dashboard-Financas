@@ -25,7 +25,7 @@ with col_h1:
     st.title("Consultor Financeiro IA")
     st.caption("Consulta seus dados sob demanda, analisa ativos no Yahoo Finance e lembra das suas preferências.")
 with col_h2:
-    if st.button("Salvar resumo", use_container_width=True, help="Resume a conversa atual e salva na memória"):
+    if st.button("Salvar resumo", icon=":material/bookmark_add:", use_container_width=True, help="Resume a conversa atual e salva na memória"):
         msgs = st.session_state.get("v2_chat_messages", [])
         api_k = obter_gemini_key()
         if msgs and api_k:
@@ -40,7 +40,7 @@ with col_h2:
                 invalidar_abas("config")
                 st.toast("✅ Resumo salvo na memória!")
 with col_h3:
-    if st.button("Nova conversa", use_container_width=True):
+    if st.button("Nova conversa", icon=":material/add_comment:", use_container_width=True):
         st.session_state["v2_chat_messages"] = []
         st.rerun()
 

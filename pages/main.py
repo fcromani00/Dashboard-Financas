@@ -11,6 +11,7 @@ import streamlit as st
 
 from core.recurring import analisar_parcelas, detectar_recorrencias
 from core.state import invalidar_abas, ler_aba, obter_repo
+from core.theme import estilizar_altair
 from core.transactions import TODAS_CATEGORIAS_V2
 from core.utils import agora_iso
 
@@ -37,15 +38,15 @@ qtd_provisorias = int((df_tx["status"] == "provisoria").sum())
 
 banners = []
 if dias_sem_lancar <= 3:
-    banners.append(f"🟢 Último registro: **{ult_data.strftime('%d/%m/%Y')}** (em dia)")
+    banners.append(f":material/check_circle: Último registro: **{ult_data.strftime('%d/%m/%Y')}** (em dia)")
 elif dias_sem_lancar <= 10:
-    banners.append(f"🟡 Último registro: **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias atrás)")
+    banners.append(f":material/schedule: Último registro: **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias atrás)")
 else:
-    banners.append(f"🔴 Último registro: **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias sem atualizar)")
+    banners.append(f":material/warning: Último registro: **{ult_data.strftime('%d/%m/%Y')}** ({dias_sem_lancar} dias sem atualizar)")
 if qtd_revisar > 0:
-    banners.append(f"📝 **{qtd_revisar}** aguardando categoria")
+    banners.append(f":material/pending_actions: **{qtd_revisar}** aguardando categoria")
 if qtd_provisorias > 0:
-    banners.append(f"📱 **{qtd_provisorias}** do iPhone aguardando fatura")
+    banners.append(f":material/smartphone: **{qtd_provisorias}** do iPhone aguardando fatura")
 
 # Cabeçalho compacto com seletor de mês e filtros em popover
 meses_disp = sorted(df_tx["ano_mes"].unique().tolist(), reverse=True)
@@ -57,11 +58,11 @@ with col_t1:
 with col_m:
     mes_selecionado = st.selectbox("Mês", options=meses_disp, index=0, label_visibility="collapsed")
 with col_pop:
-    with st.popover("Filtros", use_container_width=True):
+    with st.popover("Filtros", icon=":material/tune:", use_container_width=True):
         contas_sel = st.multiselect("Contas", options=contas_disp, default=contas_disp)
         incluir_transferencias = st.toggle("Mostrar transferências internas", value=False)
 with col_t2:
-    if st.button("Atualizar", use_container_width=True):
+    if st.button("Atualizar", icon=":material/refresh:", use_container_width=True):
         invalidar_abas()
         st.rerun()
 
@@ -173,10 +174,10 @@ with tab_mes:
                 )
                 .properties(height=max(260, len(por_cat) * 28), title=f"Despesas por Categoria ({mes_selecionado})")
             )
-            st.altair_chart(chart_cat, use_container_width=True)
+            st.altair_chart(estilizar_altair(chart_cat), use_container_width=True, theme=None)
 
         with c_g2:
-            st.markdown("##### 🏆 Top 8 maiores gastos do mês")
+            st.markdown("##### :material/leaderboard: Top 8 maiores gastos do mês")
             top_gastos = df_desp_mes.sort_values("gasto_abs", ascending=False)[
                 ["data", "descricao", "categoria", "conta", "gasto_abs"]
             ].head(8)
@@ -226,7 +227,7 @@ with tab_evolucao:
         )
         .properties(height=360)
     )
-    st.altair_chart(chart_hist, use_container_width=True)
+    st.altair_chart(estilizar_altair(chart_hist), use_container_width=True, theme=None)
 
 with tab_recorrentes:
     info_rec = detectar_recorrencias(df_operacional)
@@ -240,14 +241,14 @@ with tab_recorrentes:
 
     r1, r2, r3, r4 = st.columns(4)
     r1.metric(
-        "🔒 Custos Fixos & Assinaturas Ativas",
+        "Custos Fixos & Assinaturas",
         f"R$ {fixos_mes:,.2f}/mês",
         f"{info_rec['qtd_fixos_ativos']} identificados",
     )
-    r2.metric(f"💳 Parcelas em {mes_selecionado}", f"R$ {parc_mes:,.2f}")
-    r3.metric("🗓️ Parcelas Futuras (Total a Vencer)", f"R$ {parc_fut:,.2f}")
+    r2.metric(f"Parcelas em {mes_selecionado}", f"R$ {parc_mes:,.2f}")
+    r3.metric("Parcelas Futuras (A Vencer)", f"R$ {parc_fut:,.2f}")
     r4.metric(
-        "📌 Comprometimento (Fixos + Parcelas)",
+        "Comprometimento (Fixos + Parcelas)",
         f"R$ {comprometido_mes:,.2f}",
         f"{pct_comp:.1f}% da receita do mês" if receitas_mes > 0 else None,
     )
@@ -455,17 +456,17 @@ with tab_extrato:
 
 # ==================== AÇÕES RÁPIDAS (PADRÃO NUTRIV3) ====================
 st.divider()
-st.subheader("⚡ Ações Rápidas")
+st.subheader(":material/bolt: Ações Rápidas")
 qa1, qa2, qa3, qa4 = st.columns(4)
 with qa1:
-    if st.button("💸 Lançar / Importar Gastos", use_container_width=True):
+    if st.button("Lançar / Importar Gastos", icon=":material/receipt_long:", use_container_width=True):
         st.switch_page("pages/Inserting_Data.py")
 with qa2:
-    if st.button("📈 Carteira de Investimentos", use_container_width=True):
+    if st.button("Carteira de Investimentos", icon=":material/trending_up:", use_container_width=True):
         st.switch_page("pages/Investimentos.py")
 with qa3:
-    if st.button("🤖 Consultor Financeiro IA", use_container_width=True):
+    if st.button("Consultor Financeiro IA", icon=":material/smart_toy:", use_container_width=True):
         st.switch_page("pages/Gemini.py")
 with qa4:
-    if st.button("⚙️ Configurações & Orçamento", use_container_width=True):
+    if st.button("Configurações & Orçamento", icon=":material/settings:", use_container_width=True):
         st.switch_page("pages/Configuracoes.py")

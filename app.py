@@ -7,7 +7,7 @@ from core.theme import aplicar_tema_css, render_brand_sidebar, seletor_tema_side
 
 st.set_page_config(
     page_title="Finanças Felipe",
-    page_icon="🟠",
+    page_icon=":material/account_balance_wallet:",
     layout="wide",
     initial_sidebar_state="auto",
 )

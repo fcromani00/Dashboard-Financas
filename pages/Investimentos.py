@@ -22,7 +22,7 @@ from core.portfolio import (
     exportar_yahoo_financas,
 )
 from core.state import invalidar_abas, ler_aba, mapa_config, obter_repo, salvar_config
-from core.theme import badge_instituicao_html
+from core.theme import badge_instituicao_html, estilizar_altair
 from core.utils import agora_iso, id_deterministico, novo_id, parse_data, parse_numero
 from functions import tratar_nota_corretagem_us_inter
 
@@ -37,7 +37,7 @@ with col_h1:
     st.title("Carteira de Investimentos")
     st.caption("Inter US · Porquinho Inter · Cofrinhos & CDB Mercado Pago · Cripto")
 with col_h2:
-    if st.button("Atualizar Preços", use_container_width=True):
+    if st.button("Atualizar Preços", icon=":material/refresh:", use_container_width=True):
         _cotacoes_cacheadas.clear()
         invalidar_abas("ativos", "operacoes", "renda_fixa")
         st.rerun()
@@ -245,9 +245,9 @@ with tab_evol_aporte:
     st.markdown("---")
     col_ev1, col_ev2 = st.columns([4, 1.4])
     with col_ev1:
-        st.subheader("📈 Evolução de Aportes & Patrimônio Acumulado (BRL)")
+        st.subheader("Evolução de Aportes & Patrimônio Acumulado (BRL)")
     with col_ev2:
-        if st.button("📸 Salvar Snapshot de Hoje", use_container_width=True):
+        if st.button("Salvar Snapshot", icon=":material/photo_camera:", use_container_width=True):
             obter_repo().append(
                 "cotacoes",
                 [
@@ -287,12 +287,12 @@ with tab_evol_aporte:
                 )
                 .properties(height=300, title="Capital Investido Acumulado (R$)")
             )
-            st.altair_chart(chart_cap, use_container_width=True)
+            st.altair_chart(estilizar_altair(chart_cap), use_container_width=True, theme=None)
 
         with ev_c2:
             chart_ap = (
                 alt.Chart(df_evol)
-                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, color="#2E8B57")
+                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, color="#FF7A00")
                 .encode(
                     x=alt.X("ano_mes:N", title="Ano/Mês"),
                     y=alt.Y("aporte_liquido_brl:Q", title="Aporte Líquido (R$)"),
@@ -303,7 +303,7 @@ with tab_evol_aporte:
                 )
                 .properties(height=300, title="Aportes Líquidos Mensais (R$)")
             )
-            st.altair_chart(chart_ap, use_container_width=True)
+            st.altair_chart(estilizar_altair(chart_ap), use_container_width=True, theme=None)
 
 # ==============================================================================
 # ABA 3: AÇÕES & ETFS (INTER US)
@@ -363,7 +363,7 @@ with tab_us:
             },
         )
 
-    with st.expander("Exportar Carteira para Yahoo Finanças (CSV)", expanded=False):
+    with st.expander("Exportar Carteira para Yahoo Finanças (CSV)", icon=":material/ios_share:", expanded=False):
         st.caption(
             "Gera o arquivo `.csv` no formato oficial do Yahoo Finance (`Symbol, Trade Date, Purchase Price, Quantity`)."
         )
@@ -395,7 +395,8 @@ with tab_us:
         )
         with cy3:
             st.download_button(
-                label=f"⬇️ Baixar CSV Yahoo ({len(df_yf_exp)} linhas)",
+                label=f"Baixar CSV Yahoo ({len(df_yf_exp)} linhas)",
+                icon=":material/download:",
                 data=csv_yf_bytes,
                 file_name=f"carteira_yahoo_{date.today().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
@@ -456,7 +457,7 @@ with tab_rf_cripto:
                             f"⚠️ Em janela de **IOF regressivo ({trib['aliquota_iof_pct']:.0f}%)** — isenção total de IOF em **{trib['data_isencao_iof'].strftime('%d/%m/%Y')}** (faltam {trib['dias_para_isencao_iof']} dias)."
                         )
 
-                with st.expander("Atualizar saldo / registrar movimentação", expanded=False):
+                with st.expander("Atualizar saldo / registrar movimentação", icon=":material/edit_note:", expanded=False):
                     with st.form(f"form_rf_{at_id}", clear_on_submit=True):
                         f1, f2, f3 = st.columns([1.4, 1.3, 1.3])
                         with f1:
