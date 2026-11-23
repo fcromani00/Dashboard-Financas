@@ -104,27 +104,37 @@ if pergunta:
         st.markdown(pergunta)
 
     with st.chat_message("assistant"):
-        with st.status("Consultando dados e Yahoo Finance...", expanded=False) as status_box:
-            llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.2)
-            tools = criar_ferramentas_consultor(
-                leitor_aba=ler_aba,
-                leitor_config=mapa_config,
-                gravador_config=lambda d: (salvar_config(d), invalidar_abas("config")),
-            )
-            resposta, usadas = executar_turno_consultor(
-                llm=llm,
-                tools=tools,
-                cfg=mapa_config(),
-                historico_mensagens=st.session_state["v2_chat_messages"][:-1],
-                pergunta=pergunta,
-            )
-            if usadas:
-                status_box.update(
-                    label=f"Consultado: {', '.join(dict.fromkeys(usadas))}",
-                    state="complete",
+        try:
+            with st.status("Consultando dados e Yahoo Finance...", expanded=False) as status_box:
+                llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.2)
+                tools = criar_ferramentas_consultor(
+                    leitor_aba=ler_aba,
+                    leitor_config=mapa_config,
+                    gravador_config=lambda d: (salvar_config(d), invalidar_abas("config")),
+                )
+                resposta, usadas = executar_turno_consultor(
+                    llm=llm,
+                    tools=tools,
+                    cfg=mapa_config(),
+                    historico_mensagens=st.session_state["v2_chat_messages"][:-1],
+                    pergunta=pergunta,
+                )
+                if usadas:
+                    status_box.update(
+                        label=f"Consultado: {', '.join(dict.fromkeys(usadas))}",
+                        state="complete",
+                    )
+                else:
+                    status_box.update(label="Respondido com memória atual", state="complete")
+
+            st.markdown(resposta)
+            st.session_state["v2_chat_messages"].append({"role": "assistant", "content": resposta})
+        except Exception as exc:
+            msg_erro = str(exc)
+            if "API_KEY_INVALID" in msg_erro or "API key not valid" in msg_erro or "INVALID_ARGUMENT" in msg_erro:
+                st.error(
+                    "⚠️ **Chave da API do Gemini inválida ou expirada.** "
+                    "Gere uma nova chave no Google AI Studio e atualize `[GEMINI] api_key` nos **Secrets** do Streamlit Cloud (e em `.streamlit/secrets.toml`)."
                 )
             else:
-                status_box.update(label="Respondido com memória atual", state="complete")
-
-        st.markdown(resposta)
-        st.session_state["v2_chat_messages"].append({"role": "assistant", "content": resposta})
+                st.error(f"⚠️ Erro ao consultar o Gemini: `{type(exc).__name__}` — tente novamente em instantes.")

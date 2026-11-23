@@ -80,13 +80,14 @@ def obter_groq_key() -> str | None:
 
 def obter_gemini_key() -> str | None:
     key = os.getenv("GOOGLE_API_KEY")
-    if key:
-        return key
+    if key and key.strip():
+        return key.strip()
     try:
-        return (
+        bruta = (
             st.secrets.get("GEMINI", {}).get("api_key")
             or st.secrets.get("secrets", {}).get("GOOGLE_API_KEY")
             or st.secrets.get("GOOGLE_API_KEY")
         )
+        return str(bruta).strip() if bruta else None
     except Exception:
         return None
