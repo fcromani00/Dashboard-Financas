@@ -371,22 +371,23 @@ with tab_us:
     with cy1:
         modo_yf = st.radio(
             "Formato de exportação",
-            options=["historico", "abertas"],
+            options=["abertas", "historico"],
             format_func=lambda x: (
-                "Histórico completo de ordens (compras +, vendas -)"
-                if x == "historico"
-                else "Somente posições abertas atuais (preço médio)"
+                "Posições abertas atuais (Recomendado — 0 erros no Yahoo)"
+                if x == "abertas"
+                else "Histórico completo de ordens (compras +, vendas -)"
             ),
             horizontal=True,
             key="yf_export_modo",
         )
     with cy2:
-        incluir_cripto_yf = st.checkbox("Incluir Cripto (BTC/ETH/SOL-BRL)", value=False, key="yf_incluir_cripto")
+        incluir_cripto_yf = st.checkbox("Incluir Cripto (BTC/ETH/SOL-USD)", value=False, key="yf_incluir_cripto")
     df_yf_exp, csv_yf_bytes = exportar_yahoo_financas(
         df_ativos,
         df_ops,
         apenas_abertas=(modo_yf == "abertas"),
         incluir_cripto=incluir_cripto_yf,
+        usd_brl=usd_brl,
     )
     with cy3:
         st.download_button(

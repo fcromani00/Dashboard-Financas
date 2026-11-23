@@ -221,6 +221,17 @@ class TestPortfolioV2(unittest.TestCase):
                     "ativo": "S",
                 },
                 {
+                    "id": "a_btc",
+                    "ticker": "BTC",
+                    "nome": "Bitcoin",
+                    "classe": "cripto",
+                    "moeda": "BRL",
+                    "conta": "Binance",
+                    "fonte_cotacao": "yfinance",
+                    "codigo_cotacao": "BTC-BRL",
+                    "ativo": "S",
+                },
+                {
                     "id": "a_rf",
                     "ticker": "CDB-ML-FEV27",
                     "nome": "CDB ML",
@@ -238,6 +249,7 @@ class TestPortfolioV2(unittest.TestCase):
                 {"id": "1", "data": "2026-11-10", "ativo_id": "a_brk", "conta": "Inter US", "tipo": "compra", "quantidade": 2.0, "preco": 500.0, "taxas": 0.0, "valor_total": 1000.0, "moeda": "USD", "criado_em": "2026-11-10T10:00:00"},
                 {"id": "2", "data": "2026-11-15", "ativo_id": "a_brk", "conta": "Inter US", "tipo": "venda", "quantidade": 0.5, "preco": 520.0, "taxas": 0.0, "valor_total": 260.0, "moeda": "USD", "criado_em": "2026-11-15T10:00:00"},
                 {"id": "3", "data": "2026-11-18", "ativo_id": "a_rf", "conta": "Mercado Pago", "tipo": "aporte", "quantidade": 1.0, "preco": 10000.0, "taxas": 0.0, "valor_total": 10000.0, "moeda": "BRL", "criado_em": "2026-11-18T10:00:00"},
+                {"id": "4", "data": "2026-11-22", "ativo_id": "a_btc", "conta": "Binance", "tipo": "compra", "quantidade": 0.1, "preco": 500000.0, "taxas": 0.0, "valor_total": 50000.0, "moeda": "BRL", "criado_em": "2026-11-22T10:00:00"},
             ]
         )
 
@@ -246,16 +258,18 @@ class TestPortfolioV2(unittest.TestCase):
         self.assertEqual(list(df_hist.columns), ["Symbol", "Trade Date", "Purchase Price", "Quantity"])
         self.assertEqual(len(df_hist), 2)
         self.assertEqual(df_hist.iloc[0]["Symbol"], "BRK-B")
-        self.assertEqual(df_hist.iloc[0]["Trade Date"], "20261110")
+        self.assertEqual(df_hist.iloc[0]["Trade Date"], "2026-11-10")
         self.assertEqual(df_hist.iloc[1]["Quantity"], -0.5)
         self.assertIn(b"Symbol,Trade Date,Purchase Price,Quantity", csv_hist)
 
-        # Posições abertas: 1 linha com 1.5 ações a PM 500.0
-        df_ab, _ = exportar_yahoo_financas(df_a, df_o, apenas_abertas=True, data_ref=date(2026, 11, 22))
-        self.assertEqual(len(df_ab), 1)
-        self.assertEqual(df_ab.iloc[0]["Quantity"], 1.5)
-        self.assertEqual(df_ab.iloc[0]["Purchase Price"], 500.0)
-        self.assertEqual(df_ab.iloc[0]["Trade Date"], "20261122")
+        # Posições abertas com Cripto: BRK-B + BTC-USD convertido para USD
+        df_ab, _ = exportar_yahoo_financas(
+            df_a, df_o, apenas_abertas=True, incluir_cripto=True, usd_brl=5.0, data_ref=date(2026, 11, 22)
+        )
+        self.assertEqual(len(df_ab), 2)
+        self.assertEqual(set(df_ab["Symbol"]), {"BRK-B", "BTC-USD"})
+        btc_row = df_ab[df_ab["Symbol"] == "BTC-USD"].iloc[0]
+        self.assertEqual(btc_row["Purchase Price"], 100000.0)
 
         # IOF dia 4 = 86%, IR = 22.5% (bate com print CDB Mercado Livre)
         trib = calcular_ir_iof_renda_fixa("2026-11-18", rendimento_bruto=13.21, data_ref=date(2026, 11, 22))

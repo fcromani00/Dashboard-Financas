@@ -487,12 +487,14 @@ def calcular_ir_iof_renda_fixa(
 def exportar_yahoo_financas(
     df_ativos: pd.DataFrame,
     df_operacoes: pd.DataFrame,
-    apenas_abertas: bool = False,
+    apenas_abertas: bool = True,
     incluir_cripto: bool = False,
+    usd_brl: float = 5.80,
     data_ref: date | None = None,
 ) -> tuple[pd.DataFrame, bytes]:
     """Gera DataFrame e CSV no formato oficial de importação do Yahoo Finance:
-    Colunas: `Symbol, Trade Date, Purchase Price, Quantity` (vendas com Quantity negativo).
+    Colunas: `Symbol, Trade Date, Purchase Price, Quantity`.
+    Converte criptos `-BRL` para `-USD` (padrão aceito pelo Yahoo Finance Portfolio).
     """
     cols = ["Symbol", "Trade Date", "Purchase Price", "Quantity"]
     if df_ativos is None or df_ativos.empty:
@@ -513,27 +515,33 @@ def exportar_yahoo_financas(
         vazio_df = pd.DataFrame(columns=cols)
         return vazio_df, vazio_df.to_csv(index=False).encode("utf-8")
 
-    mapa_sym: dict[str, str] = {}
+    fx = float(usd_brl) if usd_brl and usd_brl > 0 else 5.80
+    mapa_sym: dict[str, tuple[str, float]] = {}
     for _, a in ativos_yf.iterrows():
         cod = str(a.get("codigo_cotacao") or "").strip()
         sym = cod if cod else str(a.get("ticker", "")).strip().replace(".", "-")
+        fator_preco = 1.0
+        if sym.endswith("-BRL") and str(a.get("classe", "")) == "cripto":
+            sym = sym[:-4] + "-USD"
+            fator_preco = 1.0 / fx
         if sym:
-            mapa_sym[str(a["id"])] = sym
+            mapa_sym[str(a["id"])] = (sym, fator_preco)
 
     linhas: list[dict[str, Any]] = []
     if apenas_abertas:
         pos = calcular_posicoes(ativos_yf, df_operacoes)
-        dt_str = (data_ref or date.today()).strftime("%Y%m%d")
+        dt_str = (data_ref or date.today()).strftime("%Y-%m-%d")
         abertas = pos[pos["quantidade"] > 1e-6].sort_values("custo_total", ascending=False)
         for _, r in abertas.iterrows():
-            sym = mapa_sym.get(str(r["ativo_id"]))
-            if not sym:
+            info = mapa_sym.get(str(r["ativo_id"]))
+            if not info:
                 continue
+            sym, fator_preco = info
             linhas.append(
                 {
                     "Symbol": sym,
                     "Trade Date": dt_str,
-                    "Purchase Price": round(float(r["preco_medio"]), 4),
+                    "Purchase Price": round(float(r["preco_medio"]) * fator_preco, 4),
                     "Quantity": round(float(r["quantidade"]), 8),
                 }
             )
@@ -543,9 +551,10 @@ def exportar_yahoo_financas(
             ops["data_dt"] = ops["data"].apply(parse_data)
             ops = ops.sort_values(["data_dt", "criado_em"], ascending=[True, True])
             for _, op in ops.iterrows():
-                sym = mapa_sym.get(str(op.get("ativo_id", "")))
-                if not sym:
+                info = mapa_sym.get(str(op.get("ativo_id", "")))
+                if not info:
                     continue
+                sym, fator_preco = info
                 tipo = str(op.get("tipo", "")).lower()
                 if tipo not in ("compra", "aporte", "venda", "resgate"):
                     continue
@@ -558,8 +567,8 @@ def exportar_yahoo_financas(
                 linhas.append(
                     {
                         "Symbol": sym,
-                        "Trade Date": dt_op.strftime("%Y%m%d"),
-                        "Purchase Price": round(float(p), 4),
+                        "Trade Date": dt_op.strftime("%Y-%m-%d"),
+                        "Purchase Price": round(float(p) * fator_preco, 4),
                         "Quantity": round(sinal * q, 8),
                     }
                 )
