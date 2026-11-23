@@ -400,6 +400,8 @@ class TestPortfolioV2(unittest.TestCase):
         res = resumir_holerites(pd.DataFrame([reg]))
         self.assertEqual(res["meses"], 1)
         self.assertEqual(res["total_fgts"], 1565.03)
+        self.assertEqual(res["total_pgbl_empresa"], 466.40)
+        self.assertEqual(res["total_pgbl_geral"], 932.80)
         self.assertGreater(res["margem_pgbl_restante"], 1000.0)
 
 

@@ -185,8 +185,10 @@ def tratar_holerite_pdf(file_obj: Any) -> dict[str, Any]:
     return parse_holerite_texto(texto)
 
 
-def resumir_holerites(df_hol: pd.DataFrame) -> dict[str, float]:
-    """Calcula totais acumulados de renda, impostos, FGTS, PGBL e margem até 12% para dedução de IRPF."""
+def resumir_holerites(df_hol: pd.DataFrame, match_pgbl_empresa: float = 1.0) -> dict[str, float]:
+    """Calcula totais acumulados de renda, impostos, FGTS, PGBL (com contrapartida da empresa)
+    e margem até 12% para dedução de IRPF (considerando apenas a contribuição do empregado).
+    """
     if df_hol is None or df_hol.empty:
         return {
             "meses": 0,
@@ -198,6 +200,8 @@ def resumir_holerites(df_hol: pd.DataFrame) -> dict[str, float]:
             "aliquota_efetiva_pct": 0.0,
             "total_fgts": 0.0,
             "total_pgbl": 0.0,
+            "total_pgbl_empresa": 0.0,
+            "total_pgbl_geral": 0.0,
             "limite_pgbl_12_pct": 0.0,
             "margem_pgbl_restante": 0.0,
         }
@@ -207,6 +211,7 @@ def resumir_holerites(df_hol: pd.DataFrame) -> dict[str, float]:
     inss = float(df["inss"].sum())
     irrf = float(df["irrf"].sum())
     pgbl = float(df["pgbl"].sum())
+    pgbl_emp = round(pgbl * max(0.0, float(match_pgbl_empresa)), 2)
     fgts = float(df["fgts"].sum())
     liq = float(df["total_liquido"].sum()) + float(df["adiantamento"].sum())
     ult_sal = float(df["salario_base"].iloc[-1])
@@ -225,6 +230,8 @@ def resumir_holerites(df_hol: pd.DataFrame) -> dict[str, float]:
         "aliquota_efetiva_pct": aliq_efetiva,
         "total_fgts": round(fgts, 2),
         "total_pgbl": round(pgbl, 2),
+        "total_pgbl_empresa": pgbl_emp,
+        "total_pgbl_geral": round(pgbl + pgbl_emp, 2),
         "limite_pgbl_12_pct": limite_12,
         "margem_pgbl_restante": margem_pgbl,
     }

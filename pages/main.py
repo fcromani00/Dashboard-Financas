@@ -472,15 +472,15 @@ with tab_holerites:
         h1.metric("Último Salário Base", f"R$ {res_h['ultimo_salario_base']:,.2f}")
         h2.metric("FGTS Acumulado", f"R$ {res_h['total_fgts']:,.2f}")
         h3.metric(
-            "PrevPriv PGBL",
-            f"R$ {res_h['total_pgbl']:,.2f}",
-            delta=f"Margem 12% IR: R$ {res_h['margem_pgbl_restante']:,.2f}",
+            "PGBL Total (Você + Match 4%)",
+            f"R$ {res_h['total_pgbl_geral']:,.2f}",
+            delta=f"Seu: R$ {res_h['total_pgbl']:,.2f} + Empresa: R$ {res_h['total_pgbl_empresa']:,.2f}",
             delta_color="off",
         )
         h4.metric(
             "INSS + IRRF Retidos",
             f"R$ {res_h['total_inss'] + res_h['total_irrf']:,.2f}",
-            delta=f"Alíquota efetiva {res_h['aliquota_efetiva_pct']:.1f}%",
+            delta=f"Alíquota {res_h['aliquota_efetiva_pct']:.1f}% · Margem 12% PGBL: R$ {res_h['margem_pgbl_restante']:,.2f}",
             delta_color="off",
         )
 
