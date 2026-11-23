@@ -34,8 +34,102 @@ def _num_br(txt: str | None) -> float:
     return float(v) if v is not None else 0.0
 
 
+def _parse_holerite_online(texto: str) -> dict[str, Any]:
+    """Parser para o layout `holeriteonline.com.br` (usado pelo Mercado Pago até abril/2026)."""
+    flat = re.sub(r"\s+", " ", texto).strip()
+
+    empresa = "MERCADOPAGO.COM REP. LTDA"
+    m_emp = re.search(r"CNPJ\s+(.*?)\s+\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}", flat, re.IGNORECASE)
+    if m_emp:
+        empresa = m_emp.group(1).strip()
+
+    competencia = ""
+    cargo = ""
+    m_comp = re.search(r"Compet[êe]ncia\s+\d+\s+[A-ZÀ-Ú\s]+?\s+(.*?)\s+(\d{2})(\d{4})\s+C[óo]digo", flat, re.IGNORECASE)
+    if m_comp:
+        cargo = m_comp.group(1).strip()
+        competencia = f"{m_comp.group(3)}-{m_comp.group(2)}"
+    else:
+        m_mm = re.search(r"\b(0[1-9]|1[0-2])(202[4-9])\b", flat)
+        if m_mm:
+            competencia = f"{m_mm.group(2)}-{m_mm.group(1)}"
+
+    total_proventos = total_descontos = total_liquido = 0.0
+    m_tot = re.search(
+        r"Total de Proventos\s+Total de Descontos\s+Total L[íi]quido\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})",
+        flat,
+        re.IGNORECASE,
+    )
+    if m_tot:
+        total_proventos = _num_br(m_tot.group(1))
+        total_descontos = _num_br(m_tot.group(2))
+        total_liquido = _num_br(m_tot.group(3))
+
+    salario_base = base_irrf = base_inss = base_fgts = fgts = 0.0
+    m_bases = re.search(
+        r"Sal[áa]rio Base\s+Base IRRF\s+Base INSS\s+Base FGTS\s+FGTS\s+"
+        r"([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})",
+        flat,
+        re.IGNORECASE,
+    )
+    if m_bases:
+        salario_base = _num_br(m_bases.group(1))
+        base_irrf = _num_br(m_bases.group(2))
+        base_inss = _num_br(m_bases.group(3))
+        base_fgts = _num_br(m_bases.group(4))
+        fgts = _num_br(m_bases.group(5))
+
+    inss = irrf = pgbl = beneficios_desc = ajuda_custo = adiantamento = 0.0
+    m_corpo = re.search(r"Descontos\s+(.*?)\s+Total de Proventos", flat, re.IGNORECASE)
+    if m_corpo:
+        corpo = m_corpo.group(1)
+        # Cada rubrica termina com Ref (X,XX) e Valor (Y,YY)
+        itens = re.findall(r"([/0-9A-Z]{4}\s+.*?)\s+\d+,\d{2}\s+([\d.]+,\d{2})(?=\s|$)", corpo)
+        for desc, val_s in itens:
+            val = _num_br(val_s)
+            up = desc.upper()
+            if "/314" in up or ("CONTR. INSS" in up and "PROVIS" not in up):
+                inss += val
+            elif "/401" in up or "TRIBUTO IRRF" in up:
+                irrf += val
+            elif "9FPH" in up or "PGBL" in up:
+                pgbl += val
+            elif "0830" in up or "AJUDA DE CUSTO" in up:
+                ajuda_custo += val
+            elif "/B02" in up or "ADIANTAMENTO PAGO" in up:
+                adiantamento += val
+            elif any(k in up for k in ("VALE-REFEI", "VALE ALIMENTA", "ASSISTÊNCIA MÉDICA", "ASSISTENCIA MEDICA", "ODONTOL")):
+                beneficios_desc += val
+
+    return {
+        "id": id_deterministico("holerite", competencia or "sem_data", empresa),
+        "competencia": competencia,
+        "empresa": empresa,
+        "cargo": cargo,
+        "salario_base": round(salario_base, 2),
+        "total_proventos": round(total_proventos, 2),
+        "total_descontos": round(total_descontos, 2),
+        "total_liquido": round(total_liquido, 2),
+        "inss": round(inss, 2),
+        "irrf": round(irrf, 2),
+        "fgts": round(fgts, 2),
+        "pgbl": round(pgbl, 2),
+        "beneficios_desconto": round(beneficios_desc, 2),
+        "ajuda_custo": round(ajuda_custo, 2),
+        "adiantamento": round(adiantamento, 2),
+        "base_inss": round(base_inss, 2),
+        "base_irrf": round(base_irrf, 2),
+        "base_fgts": round(base_fgts, 2),
+        "observacao": "",
+        "criado_em": agora_iso(),
+    }
+
+
 def parse_holerite_texto(texto: str) -> dict[str, Any]:
     """Extrai rubricas estruturadas a partir do texto OCR/PDF de um holerite do Mercado Pago."""
+    if "holeriteonline.com.br" in texto.lower() or "total de proventos total de descontos" in re.sub(r"\s+", " ", texto).lower():
+        return _parse_holerite_online(texto)
+
     linhas = [re.sub(r"\s+", " ", ln).strip() for ln in texto.splitlines() if ln.strip()]
     t_full = "\n".join(linhas)
 
