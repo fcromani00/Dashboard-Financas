@@ -288,6 +288,60 @@ class TestPortfolioV2(unittest.TestCase):
         self.assertEqual(trib["ir_estimado"], 0.42)
         self.assertEqual(trib["rendimento_liquido"], 1.43)
 
+    def test_advisor_memoria_e_tool_calling(self):
+        from langchain_core.messages import AIMessage
+        from core.advisor import (
+            CHAVE_MEMORIA_PERFIL,
+            carregar_memoria_lista,
+            criar_ferramentas_consultor,
+            executar_turno_consultor,
+            formatar_system_prompt,
+        )
+
+        cfg_mem: dict[str, str] = {}
+
+        def ler_aba_fake(nome: str) -> pd.DataFrame:
+            if nome == "metas":
+                return pd.DataFrame([{"nome": "Reserva", "valor_atual": 28000.0, "valor_alvo": 30000.0}])
+            return pd.DataFrame()
+
+        tools = criar_ferramentas_consultor(
+            leitor_aba=ler_aba_fake,
+            leitor_config=lambda: dict(cfg_mem),
+            gravador_config=lambda d: cfg_mem.update(d),
+        )
+
+        class FakeLLM:
+            def __init__(self):
+                self.passo = 0
+
+            def bind_tools(self, _tools):
+                return self
+
+            def invoke(self, _msgs):
+                self.passo += 1
+                if self.passo == 1:
+                    return AIMessage(
+                        content="",
+                        tool_calls=[
+                            {"id": "t1", "name": "salvar_memoria_usuario", "args": {"fato": "Foco em ETFs VOO e QQQM"}},
+                            {"id": "t2", "name": "consultar_metas_e_reserva", "args": {}},
+                        ],
+                    )
+                return AIMessage(content="Anotei seu foco em VOO/QQQM e vi que sua Reserva está em R$ 28.000 de R$ 30.000.")
+
+        resp, usadas = executar_turno_consultor(
+            llm=FakeLLM(),
+            tools=tools,
+            cfg=cfg_mem,
+            historico_mensagens=[],
+            pergunta="Guarde que meu foco é VOO e QQQM e veja minha reserva",
+        )
+        self.assertEqual(usadas, ["salvar_memoria_usuario", "consultar_metas_e_reserva"])
+        self.assertIn("28.000", resp)
+        self.assertEqual(carregar_memoria_lista(cfg_mem), ["Foco em ETFs VOO e QQQM"])
+        self.assertIn("Foco em ETFs VOO e QQQM", formatar_system_prompt(cfg_mem))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,123 +1,130 @@
-"""Consultor Financeiro IA (Finanças V2 — Fase 4).
-
-Unifica os assistentes antigos em um único consultor rápido que:
-- Lê diretamente das abas V2 (`transacoes`, `orcamento`, `metas`, `ativos`, `operacoes`) sem depender da Home;
-- Monta e faz cache do contexto financeiro completo (Gastos + Orçamento + Carteira de Investimentos);
-- Não reconstrói embeddings a cada mensagem enviada.
+"""Consultor Financeiro IA (Finanças V2/V3):
+- Tool Calling sob demanda (sem carregar RAG pesado a cada mensagem)
+- Acesso ao vivo ao Yahoo Finance (cotações, fundamentos, histórico, comparação e notícias)
+- Memória persistente salva na aba `config` do Google Sheets (`ia.memoria_perfil` / `ia.ultimo_resumo`)
 """
 
 from __future__ import annotations
 
-import pandas as pd
+import json
+
 import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from core.portfolio import calcular_posicoes
-from core.recurring import analisar_parcelas, detectar_recorrencias
-from core.state import ler_aba, obter_gemini_key
+from core.advisor import (
+    CHAVE_MEMORIA_PERFIL,
+    CHAVE_ULTIMO_RESUMO,
+    carregar_memoria_lista,
+    criar_ferramentas_consultor,
+    executar_turno_consultor,
+)
+from core.state import invalidar_abas, ler_aba, mapa_config, obter_gemini_key, salvar_config
 
-st.title("🤖 Consultor Financeiro Pessoal (V2)")
-st.caption("Enxerga seus gastos, orçamento, reserva de emergência e carteira de investimentos.")
-
-
-def montar_contexto_v2() -> str:
-    df_tx = ler_aba("transacoes")
-    df_orc = ler_aba("orcamento")
-    df_metas = ler_aba("metas")
-    df_ativos = ler_aba("ativos")
-    df_ops = ler_aba("operacoes")
-
-    op = df_tx[(df_tx["transferencia"] != "S") & (df_tx["categoria"] != "Transferência Interna")].copy()
-    op["ano_mes"] = op["data"].apply(lambda d: d.strftime("%Y-%m") if pd.notna(d) else "")
-
-    rec_m = op[op["valor"] > 0].groupby("ano_mes")["valor"].sum()
-    desp_m = op[op["valor"] < 0].groupby("ano_mes")["valor"].sum().abs()
-    cat_desp = op[op["valor"] < 0].groupby("categoria")["valor"].sum().abs().sort_values(ascending=False)
-
-    linhas = ["# Contexto Financeiro Completo do Usuário (V2)\n"]
-    linhas.append("## 1. Evolução Mensal (Receitas vs. Despesas)")
-    for m in sorted(set(rec_m.index) | set(desp_m.index))[-12:]:
-        r = float(rec_m.get(m, 0.0))
-        d = float(desp_m.get(m, 0.0))
-        linhas.append(f"- **{m}**: Receitas R$ {r:,.2f} | Despesas R$ {d:,.2f} | Saldo R$ {r - d:,.2f}")
-
-    linhas.append("\n## 2. Principais Categorias de Despesa (Histórico)")
-    for cat, val in cat_desp.head(15).items():
-        linhas.append(f"- **{cat}**: R$ {float(val):,.2f}")
-
-    if not df_orc.empty:
-        linhas.append("\n## 3. Orçamento Mensal Planejado")
-        for _, r in df_orc.iterrows():
-            linhas.append(f"- **{r['categoria']}** ({r['grupo']}): R$ {float(r['valor'] or 0):,.2f}")
-
-    if not df_metas.empty:
-        linhas.append("\n## 4. Metas e Reserva de Emergência")
-        for _, m in df_metas.iterrows():
-            linhas.append(
-                f"- **{m['nome']}**: Atual R$ {float(m['valor_atual'] or 0):,.2f} / Alvo R$ {float(m['valor_alvo'] or 0):,.2f}"
-            )
-
-    pos = calcular_posicoes(df_ativos, df_ops)
-    if not pos.empty:
-        abertas = pos[(pos["quantidade"] > 1e-7) | (pos["valor_rf_base"] > 0.01)]
-        linhas.append(f"\n## 5. Carteira de Investimentos ({len(abertas)} posições abertas)")
-        for _, p in abertas.head(30).iterrows():
-            if p["classe"] == "renda_fixa":
-                linhas.append(f"- **{p['nome']}** ({p['conta']}): Saldo R$ {p['valor_rf_base']:,.2f}")
-            else:
-                linhas.append(
-                    f"- **{p['ticker']}** ({p['classe']}, {p['moeda']}): Qtd {p['quantidade']:.4f} | PM {p['preco_medio']:.2f} | Custo {p['custo_total']:,.2f}"
-                )
-
-    rec = detectar_recorrencias(op)
-    parc = analisar_parcelas(op)
-    linhas.append(
-        f"\n## 6. Custos Fixos, Assinaturas e Parcelas\n"
-        f"- **Custos fixos/assinaturas ativas**: R$ {rec['total_fixos_ativos_mes']:,.2f}/mês ({rec['qtd_fixos_ativos']} itens)\n"
-        f"- **Saldo total de parcelas futuras a vencer**: R$ {parc['total_futuro']:,.2f}"
-    )
-
-    return "\n".join(linhas)
-
+col_h1, col_h2, col_h3 = st.columns([4.2, 1.4, 1.2])
+with col_h1:
+    st.title("Consultor Financeiro IA")
+    st.caption("Consulta seus dados sob demanda, analisa ativos no Yahoo Finance e lembra das suas preferências.")
+with col_h2:
+    if st.button("Salvar resumo", use_container_width=True, help="Resume a conversa atual e salva na memória"):
+        msgs = st.session_state.get("v2_chat_messages", [])
+        api_k = obter_gemini_key()
+        if msgs and api_k:
+            with st.spinner("Salvando resumo na planilha..."):
+                llm_res = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_k, temperature=0.1)
+                txt_conv = "\n".join(f"{m['role']}: {m['content']}" for m in msgs[-10:])
+                resumo = llm_res.invoke(
+                    "Resuma em no máximo 4 frases objetivas as decisões, dúvidas e próximos passos desta conversa "
+                    f"financeira para lembrar na próxima sessão:\n\n{txt_conv}"
+                ).content
+                salvar_config({CHAVE_ULTIMO_RESUMO: str(resumo).strip()})
+                invalidar_abas("config")
+                st.toast("✅ Resumo salvo na memória!")
+with col_h3:
+    if st.button("Nova conversa", use_container_width=True):
+        st.session_state["v2_chat_messages"] = []
+        st.rerun()
 
 api_key = obter_gemini_key()
 if not api_key:
     st.error("Chave do Gemini não encontrada em `.streamlit/secrets.toml` ou `.env`.")
     st.stop()
 
-if "v2_contexto_ia" not in st.session_state or st.button("🔄 Atualizar contexto financeiro"):
-    with st.spinner("Consolidando dados das abas V2..."):
-        st.session_state["v2_contexto_ia"] = montar_contexto_v2()
+cfg = mapa_config()
+fatos_salvos = carregar_memoria_lista(cfg)
+ultimo_resumo = str(cfg.get(CHAVE_ULTIMO_RESUMO, "") or "").strip()
+
+with st.expander(f"Memória do Consultor ({len(fatos_salvos)} fato(s) salvo(s))", expanded=False):
+    if fatos_salvos:
+        for f in fatos_salvos:
+            st.markdown(f"- {f}")
+    else:
+        st.caption("Nenhum fato salvo ainda. Conforme você conversa, o Consultor aprende e salva suas preferências aqui.")
+
+    if ultimo_resumo:
+        st.info(f"**Última conversa:** {ultimo_resumo}")
+
+    novo_fato = st.text_input("Adicionar preferência/objetivo manualmente", placeholder="Ex: Quero manter 60% em EUA, 30% RF e 10% BTC")
+    cm1, cm2 = st.columns(2)
+    with cm1:
+        if st.button("Adicionar à memória", use_container_width=True) and novo_fato.strip():
+            atualizados = fatos_salvos + [novo_fato.strip()]
+            salvar_config({CHAVE_MEMORIA_PERFIL: json.dumps(atualizados, ensure_ascii=False)})
+            invalidar_abas("config")
+            st.toast("✅ Salvo na memória!")
+            st.rerun()
+    with cm2:
+        if st.button("Limpar memória", use_container_width=True):
+            salvar_config({CHAVE_MEMORIA_PERFIL: "[]", CHAVE_ULTIMO_RESUMO: ""})
+            invalidar_abas("config")
+            st.toast("🗑️ Memória limpa.")
+            st.rerun()
 
 if "v2_chat_messages" not in st.session_state:
     st.session_state["v2_chat_messages"] = []
 
-with st.expander("📄 Ver resumo financeiro enviado ao Consultor", expanded=False):
-    st.markdown(st.session_state["v2_contexto_ia"])
+# Sugestões rápidas quando a conversa ainda está vazia
+prompt_sugerido = None
+if not st.session_state["v2_chat_messages"]:
+    s1, s2, s3 = st.columns(3)
+    if s1.button("Comparar minhas posições vs VOO (6m)", use_container_width=True):
+        prompt_sugerido = "Consulte minha carteira de ações/ETFs EUA e compare as maiores posições com o VOO nos últimos 6 meses no Yahoo Finance."
+    if s2.button("Como está meu orçamento do mês?", use_container_width=True):
+        prompt_sugerido = "Consulte meu resumo financeiro do mês atual, orçamento e custos fixos/parcelas, e diga onde preciso segurar."
+    if s3.button("Checar IOF/IR da Renda Fixa", use_container_width=True):
+        prompt_sugerido = "Consulte minha Renda Fixa e me diga quais títulos têm IOF ou prazo de IR para ficar atento."
 
 for msg in st.session_state["v2_chat_messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-pergunta = st.chat_input("Pergunte sobre seus gastos, orçamento ou investimentos...")
+pergunta = st.chat_input("Pergunte sobre seus gastos, carteira ou qualquer ticker no Yahoo Finance...") or prompt_sugerido
 if pergunta:
     st.session_state["v2_chat_messages"].append({"role": "user", "content": pergunta})
     with st.chat_message("user"):
         st.markdown(pergunta)
 
     with st.chat_message("assistant"):
-        with st.spinner("Analisando..."):
+        with st.status("Consultando dados e Yahoo Finance...", expanded=False) as status_box:
             llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.2)
-            historico_txt = "\n".join(
-                f"{m['role']}: {m['content']}" for m in st.session_state["v2_chat_messages"][-6:]
+            tools = criar_ferramentas_consultor(
+                leitor_aba=ler_aba,
+                leitor_config=mapa_config,
+                gravador_config=lambda d: (salvar_config(d), invalidar_abas("config")),
             )
-            prompt_completo = (
-                "Você é o consultor financeiro pessoal do Felipe. Responda em português de forma direta, "
-                "prática e baseada nos números reais abaixo.\n\n"
-                f"{st.session_state['v2_contexto_ia']}\n\n"
-                f"Histórico recente:\n{historico_txt}\n\n"
-                f"Pergunta atual: {pergunta}"
+            resposta, usadas = executar_turno_consultor(
+                llm=llm,
+                tools=tools,
+                cfg=mapa_config(),
+                historico_mensagens=st.session_state["v2_chat_messages"][:-1],
+                pergunta=pergunta,
             )
-            resposta = llm.invoke(prompt_completo).content
-            st.markdown(resposta)
-            st.session_state["v2_chat_messages"].append({"role": "assistant", "content": resposta})
+            if usadas:
+                status_box.update(
+                    label=f"Consultado: {', '.join(dict.fromkeys(usadas))}",
+                    state="complete",
+                )
+            else:
+                status_box.update(label="Respondido com memória atual", state="complete")
+
+        st.markdown(resposta)
+        st.session_state["v2_chat_messages"].append({"role": "assistant", "content": resposta})
