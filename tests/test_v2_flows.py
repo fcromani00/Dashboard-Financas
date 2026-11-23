@@ -204,6 +204,68 @@ class TestPortfolioV2(unittest.TestCase):
         # Crédito concedido positivo
         self.assertEqual(df.iloc[2]["Valor"], 19.90)
 
+    def test_exportar_yahoo_financas_e_iof_ir(self):
+        from core.portfolio import calcular_ir_iof_renda_fixa, exportar_yahoo_financas
+
+        df_a = pd.DataFrame(
+            [
+                {
+                    "id": "a_brk",
+                    "ticker": "BRK.B",
+                    "nome": "Berkshire",
+                    "classe": "acao_us",
+                    "moeda": "USD",
+                    "conta": "Inter US",
+                    "fonte_cotacao": "yfinance",
+                    "codigo_cotacao": "BRK-B",
+                    "ativo": "S",
+                },
+                {
+                    "id": "a_rf",
+                    "ticker": "CDB-ML-FEV27",
+                    "nome": "CDB ML",
+                    "classe": "renda_fixa",
+                    "moeda": "BRL",
+                    "conta": "Mercado Pago",
+                    "fonte_cotacao": "cdi",
+                    "codigo_cotacao": "CDI",
+                    "ativo": "S",
+                },
+            ]
+        )
+        df_o = pd.DataFrame(
+            [
+                {"id": "1", "data": "2026-11-10", "ativo_id": "a_brk", "conta": "Inter US", "tipo": "compra", "quantidade": 2.0, "preco": 500.0, "taxas": 0.0, "valor_total": 1000.0, "moeda": "USD", "criado_em": "2026-11-10T10:00:00"},
+                {"id": "2", "data": "2026-11-15", "ativo_id": "a_brk", "conta": "Inter US", "tipo": "venda", "quantidade": 0.5, "preco": 520.0, "taxas": 0.0, "valor_total": 260.0, "moeda": "USD", "criado_em": "2026-11-15T10:00:00"},
+                {"id": "3", "data": "2026-11-18", "ativo_id": "a_rf", "conta": "Mercado Pago", "tipo": "aporte", "quantidade": 1.0, "preco": 10000.0, "taxas": 0.0, "valor_total": 10000.0, "moeda": "BRL", "criado_em": "2026-11-18T10:00:00"},
+            ]
+        )
+
+        # Histórico completo: 2 linhas de BRK-B (RF excluída), venda negativa
+        df_hist, csv_hist = exportar_yahoo_financas(df_a, df_o, apenas_abertas=False)
+        self.assertEqual(list(df_hist.columns), ["Symbol", "Trade Date", "Purchase Price", "Quantity"])
+        self.assertEqual(len(df_hist), 2)
+        self.assertEqual(df_hist.iloc[0]["Symbol"], "BRK-B")
+        self.assertEqual(df_hist.iloc[0]["Trade Date"], "20261110")
+        self.assertEqual(df_hist.iloc[1]["Quantity"], -0.5)
+        self.assertIn(b"Symbol,Trade Date,Purchase Price,Quantity", csv_hist)
+
+        # Posições abertas: 1 linha com 1.5 ações a PM 500.0
+        df_ab, _ = exportar_yahoo_financas(df_a, df_o, apenas_abertas=True, data_ref=date(2026, 11, 22))
+        self.assertEqual(len(df_ab), 1)
+        self.assertEqual(df_ab.iloc[0]["Quantity"], 1.5)
+        self.assertEqual(df_ab.iloc[0]["Purchase Price"], 500.0)
+        self.assertEqual(df_ab.iloc[0]["Trade Date"], "20261122")
+
+        # IOF dia 4 = 86%, IR = 22.5% (bate com print CDB Mercado Livre)
+        trib = calcular_ir_iof_renda_fixa("2026-11-18", rendimento_bruto=13.21, data_ref=date(2026, 11, 22))
+        self.assertEqual(trib["dias_corridos"], 4)
+        self.assertEqual(trib["aliquota_iof_pct"], 86.0)
+        self.assertEqual(trib["aliquota_ir_pct"], 22.5)
+        self.assertEqual(trib["iof_estimado"], 11.36)
+        self.assertEqual(trib["ir_estimado"], 0.42)
+        self.assertEqual(trib["rendimento_liquido"], 1.43)
+
 
 if __name__ == "__main__":
     unittest.main()

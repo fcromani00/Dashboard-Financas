@@ -419,3 +419,151 @@ def calcular_evolucao_aportes_mensal(
 
     df_m["patrimonio_mercado_brl"] = df_m["ano_mes"].map(lambda m: snapshots.get(m))
     return df_m
+
+
+# Tabela oficial regressiva de IOF sobre rendimentos de Renda Fixa (dias 1 a 29)
+TABELA_IOF_DIAS = {
+    1: 96, 2: 93, 3: 90, 4: 86, 5: 83, 6: 80, 7: 76, 8: 73, 9: 70, 10: 66,
+    11: 63, 12: 60, 13: 56, 14: 53, 15: 50, 16: 46, 17: 43, 18: 40, 19: 36, 20: 33,
+    21: 30, 22: 26, 23: 23, 24: 20, 25: 16, 26: 13, 27: 10, 28: 6, 29: 3,
+}
+
+
+def calcular_ir_iof_renda_fixa(
+    data_aplicacao: date | str | None,
+    rendimento_bruto: float = 0.0,
+    data_ref: date | None = None,
+) -> dict[str, Any]:
+    """Calcula alíquotas e prazos de IOF (dias 1-29) e IR regressivo (22,5% a 15%) em Renda Fixa."""
+    ref = data_ref or date.today()
+    dt_ap = parse_data(data_aplicacao)
+    if not dt_ap:
+        return {
+            "dias_corridos": None,
+            "aliquota_iof_pct": 0.0,
+            "aliquota_ir_pct": 22.5,
+            "iof_estimado": 0.0,
+            "ir_estimado": 0.0,
+            "rendimento_liquido": round(max(0.0, float(rendimento_bruto or 0.0)), 2),
+            "data_isencao_iof": None,
+            "dias_para_isencao_iof": 0,
+            "proxima_faixa_ir": None,
+        }
+
+    dias = max(0, (ref - dt_ap).days)
+    aliquota_iof = float(TABELA_IOF_DIAS.get(dias, 0 if dias >= 30 else 96))
+
+    if dias <= 180:
+        aliquota_ir = 22.5
+        prox_ir = (dt_ap + timedelta(days=181), 20.0)
+    elif dias <= 360:
+        aliquota_ir = 20.0
+        prox_ir = (dt_ap + timedelta(days=361), 17.5)
+    elif dias <= 720:
+        aliquota_ir = 17.5
+        prox_ir = (dt_ap + timedelta(days=721), 15.0)
+    else:
+        aliquota_ir = 15.0
+        prox_ir = None
+
+    bruto = max(0.0, float(rendimento_bruto or 0.0))
+    iof_val = round(bruto * (aliquota_iof / 100.0), 2)
+    base_ir = max(0.0, bruto - iof_val)
+    ir_val = round(base_ir * (aliquota_ir / 100.0), 2)
+
+    return {
+        "dias_corridos": dias,
+        "aliquota_iof_pct": aliquota_iof,
+        "aliquota_ir_pct": aliquota_ir,
+        "iof_estimado": iof_val,
+        "ir_estimado": ir_val,
+        "rendimento_liquido": round(bruto - iof_val - ir_val, 2),
+        "data_isencao_iof": dt_ap + timedelta(days=30),
+        "dias_para_isencao_iof": max(0, 30 - dias),
+        "proxima_faixa_ir": prox_ir,
+    }
+
+
+def exportar_yahoo_financas(
+    df_ativos: pd.DataFrame,
+    df_operacoes: pd.DataFrame,
+    apenas_abertas: bool = False,
+    incluir_cripto: bool = False,
+    data_ref: date | None = None,
+) -> tuple[pd.DataFrame, bytes]:
+    """Gera DataFrame e CSV no formato oficial de importação do Yahoo Finance:
+    Colunas: `Symbol, Trade Date, Purchase Price, Quantity` (vendas com Quantity negativo).
+    """
+    cols = ["Symbol", "Trade Date", "Purchase Price", "Quantity"]
+    if df_ativos is None or df_ativos.empty:
+        vazio_df = pd.DataFrame(columns=cols)
+        return vazio_df, vazio_df.to_csv(index=False).encode("utf-8")
+
+    classes_validas = {"acao_us", "etf_us", "acao_br", "fii"}
+    if incluir_cripto:
+        classes_validas.add("cripto")
+
+    ativos_yf = df_ativos[
+        (df_ativos["fonte_cotacao"] == "yfinance")
+        & (df_ativos["classe"].isin(classes_validas))
+        & (df_ativos["ativo"].astype(str).str.upper() != "N")
+    ].copy()
+
+    if ativos_yf.empty:
+        vazio_df = pd.DataFrame(columns=cols)
+        return vazio_df, vazio_df.to_csv(index=False).encode("utf-8")
+
+    mapa_sym: dict[str, str] = {}
+    for _, a in ativos_yf.iterrows():
+        cod = str(a.get("codigo_cotacao") or "").strip()
+        sym = cod if cod else str(a.get("ticker", "")).strip().replace(".", "-")
+        if sym:
+            mapa_sym[str(a["id"])] = sym
+
+    linhas: list[dict[str, Any]] = []
+    if apenas_abertas:
+        pos = calcular_posicoes(ativos_yf, df_operacoes)
+        dt_str = (data_ref or date.today()).strftime("%Y%m%d")
+        abertas = pos[pos["quantidade"] > 1e-6].sort_values("custo_total", ascending=False)
+        for _, r in abertas.iterrows():
+            sym = mapa_sym.get(str(r["ativo_id"]))
+            if not sym:
+                continue
+            linhas.append(
+                {
+                    "Symbol": sym,
+                    "Trade Date": dt_str,
+                    "Purchase Price": round(float(r["preco_medio"]), 4),
+                    "Quantity": round(float(r["quantidade"]), 8),
+                }
+            )
+    else:
+        if df_operacoes is not None and not df_operacoes.empty:
+            ops = df_operacoes.copy()
+            ops["data_dt"] = ops["data"].apply(parse_data)
+            ops = ops.sort_values(["data_dt", "criado_em"], ascending=[True, True])
+            for _, op in ops.iterrows():
+                sym = mapa_sym.get(str(op.get("ativo_id", "")))
+                if not sym:
+                    continue
+                tipo = str(op.get("tipo", "")).lower()
+                if tipo not in ("compra", "aporte", "venda", "resgate"):
+                    continue
+                q = abs(parse_numero(op.get("quantidade")) or 0.0)
+                p = parse_numero(op.get("preco")) or 0.0
+                dt_op = op.get("data_dt")
+                if q <= 1e-8 or not dt_op:
+                    continue
+                sinal = -1.0 if tipo in ("venda", "resgate") else 1.0
+                linhas.append(
+                    {
+                        "Symbol": sym,
+                        "Trade Date": dt_op.strftime("%Y%m%d"),
+                        "Purchase Price": round(float(p), 4),
+                        "Quantity": round(sinal * q, 8),
+                    }
+                )
+
+    df_out = pd.DataFrame(linhas, columns=cols)
+    csv_bytes = df_out.to_csv(index=False).encode("utf-8")
+    return df_out, csv_bytes

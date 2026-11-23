@@ -16,8 +16,10 @@ import streamlit as st
 from core.portfolio import (
     buscar_cotacoes_atuais,
     calcular_evolucao_aportes_mensal,
+    calcular_ir_iof_renda_fixa,
     calcular_rebalanceamento,
     consolidar_carteira,
+    exportar_yahoo_financas,
 )
 from core.state import invalidar_abas, ler_aba, mapa_config, obter_repo, salvar_config
 from core.utils import agora_iso, id_deterministico, novo_id, parse_data, parse_numero
@@ -360,6 +362,43 @@ with tab_us:
             },
         )
 
+    st.markdown("---")
+    st.subheader("📥 Exportar Carteira para Yahoo Finanças (CSV)")
+    st.caption(
+        "Gera o arquivo `.csv` no formato oficial do Yahoo Finance (`Symbol, Trade Date, Purchase Price, Quantity`) — igual à aba `Formato Yahoo`."
+    )
+    cy1, cy2, cy3 = st.columns([2.2, 1.4, 1.4])
+    with cy1:
+        modo_yf = st.radio(
+            "Formato de exportação",
+            options=["historico", "abertas"],
+            format_func=lambda x: (
+                "Histórico completo de ordens (compras +, vendas -)"
+                if x == "historico"
+                else "Somente posições abertas atuais (preço médio)"
+            ),
+            horizontal=True,
+            key="yf_export_modo",
+        )
+    with cy2:
+        incluir_cripto_yf = st.checkbox("Incluir Cripto (BTC/ETH/SOL-BRL)", value=False, key="yf_incluir_cripto")
+    df_yf_exp, csv_yf_bytes = exportar_yahoo_financas(
+        df_ativos,
+        df_ops,
+        apenas_abertas=(modo_yf == "abertas"),
+        incluir_cripto=incluir_cripto_yf,
+    )
+    with cy3:
+        st.download_button(
+            label=f"⬇️ Baixar CSV Yahoo ({len(df_yf_exp)} linhas)",
+            data=csv_yf_bytes,
+            file_name=f"carteira_yahoo_{date.today().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            type="primary",
+            use_container_width=True,
+            disabled=df_yf_exp.empty,
+        )
+
 # ==============================================================================
 # ABA 3: RENDA FIXA (PORQUINHO INTER / CDB MP) & BITCOIN (BINANCE)
 # ==============================================================================
@@ -393,6 +432,24 @@ with tab_rf_cripto:
                 m_a.metric("Saldo Atual", f"R$ {saldo_atual:,.2f}")
                 m_b.metric("Total Aportado", f"R$ {custo_atual:,.2f}")
                 m_c.metric("Rendimento", f"R$ {rend_acum:,.2f}")
+
+                info_rf = df_rf[df_rf["ativo_id"] == at_id].iloc[0] if not df_rf.empty and (df_rf["ativo_id"] == at_id).any() else None
+                if info_rf is not None:
+                    taxa_cdi = parse_numero(info_rf.get("taxa_pct")) or 100.0
+                    dt_ap = parse_data(info_rf.get("data_aplicacao"))
+                    dt_venc = parse_data(info_rf.get("vencimento"))
+                    trib = calcular_ir_iof_renda_fixa(dt_ap, rendimento_bruto=max(0.0, rend_acum))
+                    partes_meta = [f"**{taxa_cdi:.0f}% do CDI**"]
+                    if dt_ap:
+                        partes_meta.append(f"Aplicado em {dt_ap.strftime('%d/%m/%Y')} ({trib['dias_corridos']}d)")
+                    if dt_venc:
+                        partes_meta.append(f"Vence em {dt_venc.strftime('%d/%m/%Y')}")
+                    partes_meta.append(f"IOF: **{trib['aliquota_iof_pct']:.0f}%** · IR: **{trib['aliquota_ir_pct']:.1f}%**")
+                    st.caption(" · ".join(partes_meta))
+                    if trib["aliquota_iof_pct"] > 0 and trib["data_isencao_iof"]:
+                        st.warning(
+                            f"⚠️ Em janela de **IOF regressivo ({trib['aliquota_iof_pct']:.0f}%)** — isenção total de IOF em **{trib['data_isencao_iof'].strftime('%d/%m/%Y')}** (faltam {trib['dias_para_isencao_iof']} dias)."
+                        )
 
                 with st.form(f"form_rf_{at_id}", clear_on_submit=True):
                     f1, f2, f3 = st.columns([1.4, 1.3, 1.3])

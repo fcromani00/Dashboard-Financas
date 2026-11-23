@@ -249,6 +249,12 @@ def tratar_nota_corretagem_us_inter(arquivo_df):
 
         symbol = linhas[i - 3].strip().upper()
         security = linhas[i - 2].strip()
+        # Caso o nome do ativo (Security) quebre em 2 linhas no PDF (ex: CONCENTRA GROUP ... / STOCK),
+        # o Symbol fica em i - 4 e as duas linhas da descrição ficam em i - 3 e i - 2.
+        if not re_sym.match(symbol) and i >= 4 and re_sym.match(linhas[i - 4].strip().upper()):
+            symbol = linhas[i - 4].strip().upper()
+            security = f"{linhas[i - 3].strip()} {linhas[i - 2].strip()}"
+
         if not re_sym.match(symbol):
             continue
 
